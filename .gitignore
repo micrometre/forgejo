@@ -1,0 +1,18 @@
+# Persistent application and database data
+data/
+backups/
+forgejo/
+postgres/
+mysql/
+# Environment files
+.env
+*.local
+
+# Backups and dumps
+*.tar.gz
+*.dump
+*.zip
+
+# OS artifacts
+.DS_Store
+Thumbs.db

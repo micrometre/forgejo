@@ -9,7 +9,7 @@ endif
 COMPOSE := docker compose
 BACKUP_DIR ?= $(or $(shell grep -E '^BACKUP_DIR=' $(ENV_FILE) 2>/dev/null | cut -d= -f2),$(HOME)/forgejo-backups)
 
-.PHONY: help init up down restart ps status logs logs-server logs-db pull shell create-admin reset-password backup backup-gdrive restore clean
+.PHONY: help init up down restart ps status logs logs-server logs-db pull shell create-admin reset-password backup backup-gdrive check-backup verify-backup restore clean
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -94,6 +94,11 @@ backup: ## Run Forgejo backup dump and save archive in BACKUP_DIR (default: ~/fo
 
 backup-gdrive: ## Push latest backup to Google Drive using rclone (use ARGS=--new to create fresh backup first)
 	@./scripts/backup-to-gdrive.sh $(ARGS)
+
+check-backup: ## Verify backup archive integrity and completeness (usage: make check-backup [FILE=path/to/dump.zip])
+	@./scripts/verify-backup.sh $(FILE)
+
+verify-backup: check-backup ## Alias for check-backup
 
 restore: init ## Restore instance from a backup file (usage: make restore [FILE=path/to/dump.zip])
 	@RESTORE_FILE="$(FILE)"; \

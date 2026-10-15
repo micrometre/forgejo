@@ -97,9 +97,20 @@ Run `make` or `make help` to list every target.
 | Command | Description |
 |---|---|
 | `make backup` | Write a full backup to `$BACKUP_DIR` |
+| `make check-backup [FILE=…]` | Verify archive integrity and check repository/database completeness |
 | `make restore [FILE=…]` | Restore from the newest backup, or from `FILE` |
 | `make backup-gdrive [ARGS=--new]` | Upload the newest backup to Google Drive |
 | `make clean` | **Destructive.** Remove containers and `./data` (asks for confirmation; backups are kept) |
+
+### Testing & VM (Multipass)
+
+| Command | Description |
+|---|---|
+| `make provision-vm [VM_NAME=…]` | Launch and provision a fresh Multipass VM with Git server running |
+| `make vm-restore [FILE=…]` | Provision VM and test-restore a backup archive |
+| `make vm-status` | List running Multipass VMs |
+| `make vm-shell` | Shell into the test VM |
+| `make vm-clean` | Stop and delete the test VM |
 
 ---
 
@@ -205,6 +216,21 @@ This writes `$BACKUP_DIR/forgejo-dump-YYYYMMDD_HHMMSS.zip`, which contains:
 | `data/` | `app.ini`, avatars, attachments, indexes, JWT keys, etc. |
 
 You can make backups while the server is running.
+
+### Verifying a backup
+
+You can verify that a backup archive is valid, uncorrupted, and contains all repositories, configuration, and database tables:
+
+```bash
+make check-backup                                                   # audits newest backup in $BACKUP_DIR
+make check-backup FILE=~/forgejo-backups/forgejo-dump-20261014_192429.zip
+```
+
+The verification script checks:
+1. **Archive integrity**: runs `unzip -t` to test CRC32 checksums of every compressed file.
+2. **Core components**: confirms PostgreSQL database dump (`forgejo-postgres.sql`), `app.ini`, and data directories exist and are non-empty.
+3. **Git repositories**: unpacks repository inventory and displays all bare Git projects.
+4. **Live server parity**: if Forgejo and PostgreSQL are running, it queries the live PostgreSQL database and compares repository and user counts directly against the backup.
 
 ### Restoring
 
@@ -375,6 +401,68 @@ Change `FORGEJO_HTTP_PORT` / `FORGEJO_SSH_PORT` in `.env` and run `make up`. If 
 
 ---
 
+## Testing & Deploying in a Multipass VM
+
+You can spin up an isolated Ubuntu VM using [Multipass](https://multipass.run/) to test the Git server, verify backups, or stage changes without touching your host Docker setup.
+
+### Prerequisites
+
+Multipass must be installed on your machine:
+```bash
+# Ubuntu / Debian
+sudo snap install multipass
+
+# macOS
+brew install --cask multipass
+
+# Windows
+winget install Canonical.Multipass
+```
+
+### Quick Deploy
+
+```bash
+make provision-vm
+```
+
+This single command:
+1. Launches an Ubuntu 24.04 (Noble) VM (`git-server`) with 2 CPUs, 4GB RAM, and 20GB disk.
+2. Injects your host SSH public keys (`~/.ssh/*.pub`) for passwordless access.
+3. Installs Docker and Docker Compose inside the VM.
+4. Packages and transfers this repository to `/home/ubuntu/git-server` inside the VM.
+5. Auto-configures `.env` with the VM's assigned IP address so web & Git clone URLs work immediately.
+6. Starts Forgejo and PostgreSQL and waits for the health check to pass.
+
+You can customize specs by passing variables:
+```bash
+make provision-vm VM_NAME=git-test VM_CPUS=4 VM_MEM=8G VM_DISK=30G
+```
+
+### Testing Backup Restoration in a VM
+
+To verify disaster recovery and prove that a backup restores cleanly in an isolated environment:
+
+```bash
+make vm-restore                                 # tests newest backup in ~/forgejo-backups
+make vm-restore FILE=~/forgejo-backups/forgejo-dump-20261014_192429.zip
+```
+
+### Accessing the VM
+
+Once deployed, the terminal outputs the VM's access points:
+- **Web UI:** `http://<VM-IP>:3000`
+- **Git clone:** `git clone ssh://git@<VM-IP>:222/ubuntu/my-repo.git`
+- **SSH into VM:** `make vm-shell` or `multipass shell git-server`
+
+### Teardown
+
+When you are finished testing:
+```bash
+make vm-clean
+```
+
+---
+
 ## Project Layout
 
 ```
@@ -384,7 +472,11 @@ Change `FORGEJO_HTTP_PORT` / `FORGEJO_SSH_PORT` in `.env` and run `make up`. If 
 ├── .env.example                # Configuration template (committed)
 ├── .env                        # Local configuration (gitignored)
 ├── scripts/
-│   └── backup-to-gdrive.sh     # rclone upload to Google Drive
+│   ├── backup-to-gdrive.sh     # rclone upload to Google Drive
+│   ├── verify-backup.sh        # Archive integrity and completeness verification
+│   └── provision-vm.sh         # Multipass VM launch and provisioning script
+├── multipass/
+│   └── cloud-init.yaml         # Cloud-init config for Multipass VM
 └── data/                       # Persistent state (gitignored)
     ├── forgejo/
     │   ├── git/repositories/   # Bare Git repositories

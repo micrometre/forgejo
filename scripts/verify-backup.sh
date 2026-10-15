@@ -53,11 +53,11 @@ echo "[2/4] Inspecting core components..."
 ZIP_CONTENTS="$(unzip -l "${TARGET_FILE}")"
 
 # Check database dump
-if echo "${ZIP_CONTENTS}" | grep -q "forgejo-postgres.sql"; then
-    PG_SIZE="$(echo "${ZIP_CONTENTS}" | grep "forgejo-postgres.sql" | awk '{print $1}')"
+if grep -q "forgejo-postgres.sql" <<< "${ZIP_CONTENTS}"; then
+    PG_SIZE="$(grep "forgejo-postgres.sql" <<< "${ZIP_CONTENTS}" | awk '{print $1}')"
     echo "  [OK] PostgreSQL dump (forgejo-postgres.sql) present (${PG_SIZE} bytes)"
-elif echo "${ZIP_CONTENTS}" | grep -q "forgejo-db.sql"; then
-    SQL_SIZE="$(echo "${ZIP_CONTENTS}" | grep "forgejo-db.sql" | awk '{print $1}')"
+elif grep -q "forgejo-db.sql" <<< "${ZIP_CONTENTS}"; then
+    SQL_SIZE="$(grep "forgejo-db.sql" <<< "${ZIP_CONTENTS}" | awk '{print $1}')"
     echo "  [OK] SQL export (forgejo-db.sql) present (${SQL_SIZE} bytes)"
 else
     echo "  [FAIL] Missing database dump SQL file!" >&2
@@ -65,14 +65,14 @@ else
 fi
 
 # Check configuration
-if echo "${ZIP_CONTENTS}" | grep -qE "(app\.ini|conf/app\.ini)"; then
+if grep -q "app\.ini" <<< "${ZIP_CONTENTS}"; then
     echo "  [OK] Forgejo configuration (app.ini) present"
 else
     echo "  [FAIL] Missing app.ini in archive!" >&2
 fi
 
 # Check data directory
-if echo "${ZIP_CONTENTS}" | grep -q "data/"; then
+if grep -q "data/" <<< "${ZIP_CONTENTS}"; then
     echo "  [OK] Application data directory (data/) present"
 else
     echo "  [WARN] No data/ directory found in archive"
@@ -80,7 +80,7 @@ fi
 
 # 3. Analyze Git Repositories
 echo "[3/4] Analyzing Git repositories in backup..."
-REPOS=($(echo "${ZIP_CONTENTS}" | grep -oE "repos/[^/]+/[^/]+\.git" | sort -u || true))
+REPOS=($(grep -oE "repos/[^/]+/[^/]+\.git" <<< "${ZIP_CONTENTS}" | sort -u || true))
 REPO_COUNT=${#REPOS[@]}
 
 echo "  Found ${REPO_COUNT} bare Git repositories:"

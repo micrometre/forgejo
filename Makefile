@@ -8,8 +8,12 @@ endif
 
 COMPOSE := docker compose
 BACKUP_DIR ?= $(or $(shell grep -E '^BACKUP_DIR=' $(ENV_FILE) 2>/dev/null | cut -d= -f2),$(HOME)/forgejo-backups)
+VM_NAME ?= git-server
+VM_CPUS ?= 2
+VM_MEM ?= 4G
+VM_DISK ?= 20G
 
-.PHONY: help init up down restart ps status logs logs-server logs-db pull shell create-admin reset-password backup backup-gdrive check-backup verify-backup restore clean
+.PHONY: help init up down restart ps status logs logs-server logs-db pull shell create-admin reset-password backup backup-gdrive check-backup verify-backup restore clean vm-status provision-vm  vm-restore vm-shell vm-clean sshkey-multipass
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -113,10 +117,12 @@ restore: init ## Restore instance from a backup file (usage: make restore [FILE=
 		exit 1; \
 	fi; \
 	echo "Found backup file: $$RESTORE_FILE"; \
-	read -p "WARNING: This will overwrite existing database and repository data. Proceed? [y/N] " confirm; \
-	if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
-		echo "Restore aborted."; \
-		exit 0; \
+	if [ "$${CONFIRM:-}" != "y" ] && [ "$${CONFIRM:-}" != "Y" ]; then \
+		read -p "WARNING: This will overwrite existing database and repository data. Proceed? [y/N] " confirm; \
+		if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
+			echo "Restore aborted."; \
+			exit 0; \
+		fi; \
 	fi; \
 	echo "Starting restore from $$RESTORE_FILE..."; \
 	DB_USER=$$(grep -E '^POSTGRES_USER=' .env 2>/dev/null | cut -d= -f2 || echo forgejo); \
@@ -164,3 +170,28 @@ clean: ## Stop services and delete persistent data (data/)
 	else \
 		echo "Aborted."; \
 	fi
+
+# -----------------------------------------------------------------------------
+# Multipass VM Testing & Provisioning
+# -----------------------------------------------------------------------------
+
+vm-status: ## List all Multipass VMs and their status
+	@multipass list
+
+provision-vm: ## Provision and deploy Git Server into a Multipass VM
+	@./scripts/provision-vm.sh --name $(VM_NAME) --cpus $(VM_CPUS) --memory $(VM_MEM) --disk $(VM_DISK)
+
+
+vm-restore: ## Provision VM and test-restore the latest backup (or FILE=...)
+	@./scripts/provision-vm.sh --name $(VM_NAME) --cpus $(VM_CPUS) --memory $(VM_MEM) --disk $(VM_DISK) --restore $(FILE)
+
+sshkey-multipass: ## Copy host SSH public keys into the Multipass VM
+	@mkdir -p ~/.ssh
+	@cat ~/.ssh/*.pub 2>/dev/null | multipass exec $(VM_NAME) -- tee -a .ssh/authorized_keys >/dev/null || true
+	@echo "Injected SSH public keys into $(VM_NAME)"
+
+vm-shell: ## Open an interactive shell inside the Multipass VM
+	@multipass shell $(VM_NAME)
+
+vm-clean: ## Stop and delete the Multipass test VM
+	@multipass delete --purge $(VM_NAME)

@@ -166,7 +166,7 @@ Host forgejo
     User git
 ```
 
-Then clone with `git clone forgejo:ubuntu/my-repo.git`.
+Then clone with `git clone forgejo:ubuntu/my-repo.git`. *(If testing in a Multipass VM, see [Multipass SSH Configuration](#ssh-configuration-sshconfig)).*
 
 ### Pushing an existing project
 
@@ -454,6 +454,45 @@ Once deployed, the terminal outputs the VM's access points:
 - **Git clone:** `git clone ssh://git@<VM-IP>:222/ubuntu/my-repo.git`
 - **SSH into VM:** `make vm-shell` or `multipass shell git-server`
 
+### SSH Configuration (`~/.ssh/config`)
+
+To easily connect to the VM OS or clone repositories via SSH without repeatedly typing IP addresses, ports, or passwords, add the following to `~/.ssh/config`:
+
+```sshconfig
+# 1. Direct SSH Shell into the Multipass VM OS
+Host git-vm
+    HostName 10.134.198.130                  # Or git-server.local, or IP from `make vm-status`
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519            # Your host private key (public key is auto-injected by provision-vm)
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+# 2. Git over SSH to Forgejo inside the Multipass VM
+Host forgejo-vm
+    HostName 10.134.198.130                  # Or git-server.local, or IP from `make vm-status`
+    Port 222
+    User git
+    IdentityFile ~/.ssh/id_ed25519            # Key registered in Forgejo Web UI (Settings → SSH / GPG Keys)
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+```
+
+> [!TIP]
+> Setting `StrictHostKeyChecking no` and `UserKnownHostsFile /dev/null` avoids host key mismatch warnings whenever test VMs are deleted and recreated.
+
+With this in place:
+```bash
+# SSH directly into the VM OS:
+ssh git-vm
+
+# Clone a repository from Forgejo inside the VM:
+git clone forgejo-vm:ubuntu/my-repo.git
+
+# Add the VM Forgejo as a remote to an existing project:
+git remote add vm forgejo-vm:ubuntu/my-project.git
+git push vm main
+```
+
 ### Teardown
 
 When you are finished testing:
@@ -468,7 +507,13 @@ make vm-clean
 ```
 .
 ├── docker-compose.yml          # Forgejo + PostgreSQL services
-├── Makefile                    # Lifecycle, user, backup and restore commands
+├── Makefile                    # Main orchestrator (includes make/*.mk)
+├── make/                       # Modular makefiles
+│   ├── config.mk               # Environment, defaults, and help target
+│   ├── service.mk              # Service lifecycle (up, down, logs, shell)
+│   ├── admin.mk                # User and password management
+│   ├── backup.mk               # Backup, verification, restore, and cleanup
+│   └── multipass.mk            # Multipass VM testing and provisioning
 ├── .env.example                # Configuration template (committed)
 ├── .env                        # Local configuration (gitignored)
 ├── scripts/

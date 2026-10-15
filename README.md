@@ -97,6 +97,7 @@ Run `make` or `make help` to list every target.
 | Command | Description |
 |---|---|
 | `make backup` | Write a full backup to `$BACKUP_DIR` |
+| `make backup-branches [ARGS=…]` | Run `backup_branches.sh` across all repositories in `~/repos` |
 | `make check-backup [FILE=…]` | Verify archive integrity and check repository/database completeness |
 | `make restore [FILE=…]` | Restore from the newest backup, or from `FILE` |
 | `make backup-gdrive [ARGS=--new]` | Upload the newest backup to Google Drive |
@@ -207,6 +208,47 @@ mkdir -p /tmp/export && git --git-dir=$REPO archive HEAD | tar -x -C /tmp/export
 
 > [!WARNING]
 > Don't edit files under `./data/forgejo/git/` directly. Use `git push` or the web UI so Forgejo's database stays in sync.
+
+### Synchronizing all repository branches (`make backup-branches`)
+
+If your project directories in `~/repos` contain a `backup_branches.sh` script to fetch from upstream and push all branches and tags to Forgejo (`git@git.local:ubuntu/<repo>`), you can run them all in a single coordinated command:
+
+```bash
+# Run branch sync across all repositories in ~/repos
+make backup-branches
+
+# Or run directly from ~/repos
+~/repos/backup_all_branches.sh
+```
+
+Supported flags and options (pass via `ARGS="..."` when using `make`):
+
+| Option | Description | Example |
+|---|---|---|
+| `-n`, `--dry-run` | List discovered repositories without running | `make backup-branches ARGS="--dry-run"` |
+| `-o`, `--only <name>` | Process only the specified repository | `make backup-branches ARGS="--only anpr-client"` |
+| `-d`, `--dir <path>` | Specify custom repositories root directory | `~/repos/backup_all_branches.sh --dir /custom/repos` |
+| `-q`, `--quiet` | Suppress per-repo git verbose logs and show summary table | `make backup-branches ARGS="--quiet"` |
+| `-f`, `--fail-fast` | Stop immediately if any repository backup script fails | `make backup-branches ARGS="--fail-fast"` |
+
+When completed, a formatted summary report displays individual repository status and execution timings:
+
+```text
+=================================================================
+  Backup All Branches - Summary Report
+=================================================================
+Total Repositories: 9
+Successful:         9
+Failed:             0
+Total Duration:     7s
+-----------------------------------------------------------------
+  Repository                   Status       Duration  
+  ---------------------------- ------------ ----------
+  anpr-camera                  SUCCESS      1s        
+  anpr-client                  SUCCESS      0s        
+  ...
+=================================================================
+```
 
 ---
 

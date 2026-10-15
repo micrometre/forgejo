@@ -119,6 +119,7 @@ Run `make` or `make help` to list every target.
 | `make ansible-ping` | Test SSH connectivity to all inventory servers |
 | `make ansible-deploy` | Run end-to-end site playbook on inventory hosts (`common` + `docker` + `git_server`) |
 | `make ansible-app` | Fast deployment/update of Git server stack only (skips OS packages) |
+| `make ansible-restore [FILE=…]` | Transfer and restore host backup archive onto inventory servers |
 | `make ansible-vm` | Launch Multipass VM and provision completely with Ansible |
 
 *See [`ansible/README.md`](ansible/README.md) for role details, inventory configuration, and playbooks.*

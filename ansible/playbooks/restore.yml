@@ -1,0 +1,15 @@
+---
+# =============================================================================
+# Playbook: Restore Forgejo Backup Archive From Control Host
+# =============================================================================
+# Usage:
+#   ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/restore.yml
+#   ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/restore.yml -e "backup_src=/path/to/archive.zip"
+
+- name: Restore Backup to Git Servers
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: restore_backup

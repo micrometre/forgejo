@@ -1,0 +1,21 @@
+---
+# Overridable defaults for restore_backup role
+
+# Host (Ansible Controller) settings
+backup_src: ""
+host_backup_dir: "{{ lookup('env', 'HOME') }}/forgejo-backups"
+
+# Target Host settings
+deploy_user: ubuntu
+git_server_dir: "/home/{{ deploy_user }}/git-server"
+target_backup_dir: "/home/{{ deploy_user }}/forgejo-backups"
+target_restore_file: "{{ target_backup_dir }}/restore-target.zip"
+
+# Port and credentials defaults
+forgejo_http_port: 3000
+postgres_user: forgejo
+postgres_db: forgejo
+
+# Post-restore options
+verify_after_restore: true
+run_doctor_authorized_keys: true

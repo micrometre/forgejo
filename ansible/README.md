@@ -19,11 +19,13 @@ ansible/
 ├── playbooks/
 │   ├── site.yml                   # Master playbook: runs common + docker + git_server
 │   ├── deploy-git-server.yml      # Fast app deployment (skips OS packages)
-│   └── provision-multipass.yml    # Turnkey: launches Multipass VM and provisions it
+│   ├── provision-multipass.yml    # Turnkey: launches Multipass VM and provisions it
+│   └── restore.yml                # Restores host backup archive onto target server(s)
 └── roles/
     ├── common/                    # OS baseline: apt cache, essential tools, SSH keys
     ├── docker/                    # Installs Docker CE & Docker Compose plugin
-    └── git_server/                # Templates .env & compose, starts containers, creates admin
+    ├── git_server/                # Templates .env & compose, starts containers, creates admin
+    └── restore_backup/            # Auto-locates, transfers, and restores host backup archive
 ```
 
 ---
@@ -47,7 +49,14 @@ ansible/
 * Copies project Makefiles and utility scripts (`verify-backup.sh`, `backup-to-gdrive.sh`).
 * Starts containers (`docker compose up -d`) and waits for the HTTP healthcheck on port 3000.
 * Queries the database user count and automatically provisions the default administrator account if no users exist.
-* **Backup Restoration (Optional)**: If `git_server_restore_file` is defined, transfers the archive and restores database and repositories automatically.
+
+### 4. `restore_backup`
+* **Auto-Discovery on Host**: Detects the latest `forgejo-dump-*.zip` in `~/forgejo-backups` on the control machine, or accepts an explicit path via `backup_src`.
+* **Safe Transfer**: Securely transfers the archive to the remote target host.
+* **Integrity Validation**: Runs `unzip -tq` to verify archive CRC32 checksums before touching the database.
+* **Database & Repository Restore**: Runs `make restore` with non-interactive confirmation.
+* **SSH Key Doctor**: Fixes and regenerates Git SSH `authorized_keys`.
+* **Post-Restore Audit**: Queries target database to confirm exact repository and user count, reporting a clean summary.
 
 ---
 
@@ -58,6 +67,7 @@ ansible/
 | `playbooks/site.yml` | Full end-to-end configuration (`common` → `docker` → `git_server`) | `git_servers` |
 | `playbooks/deploy-git-server.yml` | Fast update of application stack only (skips OS package steps) | `git_servers` |
 | `playbooks/provision-multipass.yml` | Launches a Multipass VM locally and provisions it via Ansible | `localhost` + VM |
+| `playbooks/restore.yml` | Transfers and restores host backup archive to target server(s) | `git_servers` |
 
 ---
 
@@ -75,7 +85,11 @@ make ansible-deploy
 # 3. Fast application update (skips OS package installations)
 make ansible-app
 
-# 4. Launch a Multipass VM and provision it end-to-end with Ansible
+# 4. Restore newest host backup to all inventory servers (or pass FILE=...)
+make ansible-restore
+make ansible-restore FILE=/home/ubuntu/forgejo-backups/forgejo-dump-20261014_204642.zip
+
+# 5. Launch a Multipass VM and provision it end-to-end with Ansible
 make ansible-vm
 ```
 
@@ -85,9 +99,9 @@ You can also run playbooks directly using `ansible-playbook`:
 # Full deployment using the local ansible.cfg:
 ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/site.yml
 
-# Test-restore a backup archive during deployment:
-ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/site.yml \
-  -e "git_server_restore_file=/home/ubuntu/forgejo-backups/forgejo-dump-20261014_204642.zip"
+# Restore backup using dedicated restore playbook:
+ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/restore.yml \
+  -e "backup_src=/home/ubuntu/forgejo-backups/forgejo-dump-20261014_204642.zip"
 ```
 
 ---

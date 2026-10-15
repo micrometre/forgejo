@@ -1,0 +1,121 @@
+---
+# =============================================================================
+# Role: restore_backup
+# Transfers and restores a Forgejo backup archive from the control host.
+# =============================================================================
+
+- name: Resolve backup archive on Ansible controller (host)
+  delegate_to: localhost
+  run_once: true
+  become: false
+  block:
+    - name: Search for backup files in host_backup_dir when backup_src is not provided
+      when: backup_src is not defined or backup_src == ""
+      block:
+        - name: Locate backup archives in host directory
+          ansible.builtin.find:
+            paths: "{{ host_backup_dir }}"
+            patterns: "forgejo-dump-*.zip"
+          register: host_backups_found
+
+        - name: Abort if no backup files exist in host_backup_dir
+          ansible.builtin.fail:
+            msg: "No backup archive found in {{ host_backup_dir }}. Pass one with -e 'backup_src=/path/to/backup.zip'"
+          when: host_backups_found.matched == 0
+
+        - name: Pick the newest backup archive from host
+          ansible.builtin.set_fact:
+            resolved_backup_src: "{{ (host_backups_found.files | sort(attribute='mtime', reverse=true) | first).path }}"
+
+    - name: Use explicitly specified backup_src
+      ansible.builtin.set_fact:
+        resolved_backup_src: "{{ backup_src }}"
+      when: backup_src is defined and backup_src != ""
+
+    - name: Verify backup archive exists on host
+      ansible.builtin.stat:
+        path: "{{ resolved_backup_src }}"
+      register: host_backup_stat
+
+    - name: Abort if specified backup archive does not exist on host
+      ansible.builtin.fail:
+        msg: "The backup archive '{{ resolved_backup_src }}' was not found on the Ansible controller host."
+      when: not host_backup_stat.stat.exists
+
+- name: Ensure target backup directory exists
+  ansible.builtin.file:
+    path: "{{ target_backup_dir }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Transfer backup archive from control host to target server
+  ansible.builtin.copy:
+    src: "{{ resolved_backup_src }}"
+    dest: "{{ target_restore_file }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+
+- name: Test archive integrity on target server before restoring
+  ansible.builtin.command:
+    cmd: "unzip -tq {{ target_restore_file }}"
+  changed_when: false
+
+- name: Execute restore on target server
+  ansible.builtin.command:
+    cmd: "make restore FILE={{ target_restore_file }} CONFIRM=y"
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  register: restore_execution
+  changed_when: true
+
+- name: Wait for Forgejo web interface to respond after restore
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ forgejo_http_port }}"
+    delay: 3
+    timeout: 60
+    state: started
+
+- name: Regenerate Git SSH authorized_keys if requested
+  ansible.builtin.command:
+    cmd: "docker compose exec --user git server forgejo doctor check -c /data/gitea/conf/app.ini --run authorized-keys --fix"
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  when: run_doctor_authorized_keys | default(true)
+  changed_when: false
+  failed_when: false
+
+- name: Query restored repository count from target database
+  ansible.builtin.command:
+    cmd: >
+      docker compose exec -T db psql -U {{ postgres_user }} -d {{ postgres_db }}
+      -tAc "SELECT COUNT(*) FROM \"repository\";"
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  register: restored_repo_count
+  changed_when: false
+
+- name: Query restored user count from target database
+  ansible.builtin.command:
+    cmd: >
+      docker compose exec -T db psql -U {{ postgres_user }} -d {{ postgres_db }}
+      -tAc "SELECT COUNT(*) FROM \"user\";"
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  register: restored_user_count
+  changed_when: false
+
+- name: Display restore summary
+  ansible.builtin.debug:
+    msg:
+      - "================================================================="
+      - "  Restore Completed Successfully!"
+      - "  Source Archive:   {{ resolved_backup_src }}"
+      - "  Target Host:      {{ inventory_hostname }} ({{ ansible_host }})"
+      - "  Repositories:     {{ restored_repo_count.stdout | trim }} active projects"
+      - "  User Accounts:    {{ restored_user_count.stdout | trim }} users"
+      - "  Web UI:           http://{{ ansible_host }}:{{ forgejo_http_port }}"
+      - "================================================================="

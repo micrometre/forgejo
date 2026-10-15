@@ -1,0 +1,15 @@
+---
+# =============================================================================
+# Application Playbook: Deploy or Update Git Server Application Stack
+# =============================================================================
+# Skips OS baseline/docker package installation; only updates .env, compose,
+# scripts, and containers.
+
+- name: Deploy / Update Git Server Application Stack
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: git_server
+      tags: [git_server, app]

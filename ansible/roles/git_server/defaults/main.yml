@@ -1,0 +1,23 @@
+---
+project_root: "{{ playbook_dir }}/../.."
+git_server_dir: "/home/{{ deploy_user }}/git-server"
+backup_dir: "/home/{{ deploy_user }}/forgejo-backups"
+
+forgejo_version: "16"
+postgres_version: "16-alpine"
+
+forgejo_http_port: 3000
+forgejo_ssh_port: 222
+forgejo_domain: "{{ ansible_host | default('localhost') }}"
+forgejo_root_url: "http://{{ forgejo_domain }}:{{ forgejo_http_port }}/"
+
+postgres_db: forgejo
+postgres_user: forgejo
+postgres_password: forgejo
+
+admin_user: ubuntu
+admin_password: "admin-1234"
+admin_email: "admin@example.local"
+
+# If path is provided, restores this archive during playbook execution
+git_server_restore_file: ""

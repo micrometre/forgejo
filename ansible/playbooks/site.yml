@@ -1,0 +1,33 @@
+---
+# =============================================================================
+# Master Playbook: End-to-End Infrastructure Deployment
+# =============================================================================
+# Provisions system baseline, Docker Engine & Compose, and Forgejo Git Server.
+
+- name: Provision Git Server Infrastructure
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: docker
+      tags: [docker]
+
+    - role: git_server
+      tags: [git_server, app]
+
+  post_tasks:
+    - name: Display connection info
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Deployment Successful!"
+          - "  Target Host:  {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  Web UI:       http://{{ forgejo_domain }}:{{ forgejo_http_port }}"
+          - "  Git SSH Port: {{ forgejo_ssh_port }}"
+          - "  Admin User:   {{ admin_user }}"
+          - "================================================================="
+      tags: [always]

@@ -28,11 +28,13 @@ Options:
   --image <distro>    Ubuntu release (default: noble / 24.04 LTS)
   --restore [file]    Restore existing backup into VM (defaults to latest backup)
   --recreate          Delete existing VM first and provision from scratch
+  --ansible           Provision using Ansible playbooks (IaC workflow)
   -h, --help          Show this help message
 
 Examples:
   $0
   $0 --name git-test --cpus 4 --memory 8G
+  $0 --ansible
   $0 --restore
   $0 --restore ~/forgejo-backups/forgejo-dump-20261014_192429.zip
 EOF
@@ -74,6 +76,10 @@ while [[ $# -gt 0 ]]; do
             RECREATE="true"
             shift
             ;;
+        --ansible)
+            USE_ANSIBLE="true"
+            shift
+            ;;
         -h|--help)
             usage
             ;;
@@ -83,6 +89,30 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# If --ansible is requested, hand off to provision-multipass.yml
+if [ "${USE_ANSIBLE:-false}" = "true" ]; then
+    echo "================================================================="
+    echo "  Provisioning Git Server via Ansible Playbook: ${VM_NAME}"
+    echo "================================================================="
+    EXTRA_RESTORE=""
+    if [ -n "${RESTORE_BACKUP}" ]; then
+        if [ "${RESTORE_BACKUP}" = "latest" ]; then
+            RESOLVED_BKP="$(ls -t "${HOME}"/forgejo-backups/forgejo-dump-*.zip 2>/dev/null | head -n1 || true)"
+            if [ -n "${RESOLVED_BKP}" ]; then
+                EXTRA_RESTORE="git_server_restore_file=${RESOLVED_BKP}"
+            fi
+        else
+            EXTRA_RESTORE="git_server_restore_file=${RESTORE_BACKUP}"
+        fi
+    fi
+
+    ANSIBLE_CONFIG="${SCRIPT_DIR}/ansible/ansible.cfg" ansible-playbook \
+        "${SCRIPT_DIR}/ansible/playbooks/provision-multipass.yml" \
+        -e "vm_name=${VM_NAME} vm_cpus=${VM_CPUS} vm_memory=${VM_MEM} vm_disk=${VM_DISK}" \
+        ${EXTRA_RESTORE:+-e "${EXTRA_RESTORE}"}
+    exit $?
+fi
 
 # 1. Verify Multipass is installed
 if ! command -v multipass >/dev/null 2>&1; then

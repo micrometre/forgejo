@@ -112,6 +112,15 @@ Run `make` or `make help` to list every target.
 | `make vm-shell` | Shell into the test VM |
 | `make vm-clean` | Stop and delete the test VM |
 
+### Infrastructure as Code (Ansible)
+
+| Command | Description |
+|---|---|
+| `make ansible-ping` | Test SSH connectivity to all inventory servers |
+| `make ansible-deploy` | Run end-to-end site playbook on inventory hosts (`common` + `docker` + `git_server`) |
+| `make ansible-app` | Fast deployment/update of Git server stack only (skips OS packages) |
+| `make ansible-vm` | Launch Multipass VM and provision completely with Ansible |
+
 ---
 
 ## Configuration
@@ -502,6 +511,55 @@ make vm-clean
 
 ---
 
+## Infrastructure as Code (Ansible)
+
+This repository includes a production-ready Ansible suite to provision any target machine (bare metal, cloud VM, or Multipass test instance) from scratch:
+
+```
+ansible/
+├── ansible.cfg                    # Preconfigured SSH, pipelining, and inventory settings
+├── inventory/
+│   ├── hosts.ini                  # Target server hosts and groups
+│   └── group_vars/
+│       └── all.yml                # Configurable ports, versions, paths, credentials
+├── playbooks/
+│   ├── site.yml                   # Master playbook: runs common + docker + git_server
+│   ├── deploy-git-server.yml      # Fast app deployment (skips OS packages)
+│   └── provision-multipass.yml    # Turnkey: launches Multipass VM and provisions it
+└── roles/
+    ├── common/                    # OS baseline: apt cache, essential tools, SSH keys
+    ├── docker/                    # Installs Docker CE & Docker Compose plugin
+    └── git_server/                # Templates .env & compose, starts containers, creates admin
+```
+
+### Quick Commands
+
+```bash
+# 1. Test SSH connectivity to all configured hosts:
+make ansible-ping
+
+# 2. Deploy or update the full stack on all inventory servers:
+make ansible-deploy
+
+# 3. Launch a Multipass VM and provision it end-to-end with Ansible:
+make ansible-vm
+
+# 4. Update the Git server application stack only (skipping OS package steps):
+make ansible-app
+```
+
+### Deploying to Remote Servers
+
+1. Add your server to `ansible/inventory/hosts.ini`:
+   ```ini
+   [git_servers]
+   prod-git ansible_host=192.168.1.100 ansible_user=ubuntu
+   ```
+2. Adjust environment settings in `ansible/inventory/group_vars/all.yml` if needed.
+3. Run `make ansible-deploy`.
+
+---
+
 ## Project Layout
 
 ```
@@ -513,7 +571,13 @@ make vm-clean
 │   ├── service.mk              # Service lifecycle (up, down, logs, shell)
 │   ├── admin.mk                # User and password management
 │   ├── backup.mk               # Backup, verification, restore, and cleanup
-│   └── multipass.mk            # Multipass VM testing and provisioning
+│   ├── multipass.mk            # Multipass VM testing and provisioning
+│   └── ansible.mk              # Ansible IaC commands
+├── ansible/                    # Infrastructure as Code
+│   ├── ansible.cfg             # Ansible configuration
+│   ├── inventory/              # Hosts inventory and variable definitions
+│   ├── playbooks/              # Site, deploy, and multipass playbooks
+│   └── roles/                  # common, docker, and git_server roles
 ├── .env.example                # Configuration template (committed)
 ├── .env                        # Local configuration (gitignored)
 ├── scripts/

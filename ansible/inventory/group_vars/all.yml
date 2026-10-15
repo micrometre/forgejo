@@ -1,0 +1,29 @@
+---
+# Global defaults for all hosts
+deploy_user: ubuntu
+
+# Forgejo Versions & Settings
+forgejo_version: "16"
+postgres_version: "16-alpine"
+
+# Ports
+forgejo_http_port: 3000
+forgejo_ssh_port: 222
+
+# Credentials
+postgres_db: forgejo
+postgres_user: forgejo
+postgres_password: forgejo
+
+# Initial Admin (only created if no users exist)
+admin_user: ubuntu
+admin_password: "admin-1234"
+admin_email: "admin@example.local"
+
+# Directory paths on target host
+git_server_dir: "/home/{{ deploy_user }}/git-server"
+backup_dir: "/home/{{ deploy_user }}/forgejo-backups"
+rclone_remote: "gdrive:Forgejo-Backups"
+
+# Backup restoration (leave empty for clean deployment)
+# git_server_restore_file: ""

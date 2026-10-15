@@ -1,0 +1,120 @@
+---
+- name: Ensure git-server project directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+  loop:
+    - "{{ git_server_dir }}"
+    - "{{ git_server_dir }}/data"
+    - "{{ git_server_dir }}/data/forgejo"
+    - "{{ git_server_dir }}/data/postgres"
+    - "{{ git_server_dir }}/scripts"
+    - "{{ git_server_dir }}/make"
+    - "{{ backup_dir }}"
+
+- name: Render .env configuration
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ git_server_dir }}/.env"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0640"
+
+- name: Render docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ git_server_dir }}/docker-compose.yml"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+
+- name: Copy project Makefile and modular make/ directory
+  ansible.builtin.copy:
+    src: "{{ project_root }}/{{ item }}"
+    dest: "{{ git_server_dir }}/{{ item }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: preserve
+  loop:
+    - Makefile
+    - make
+
+- name: Copy utility scripts
+  ansible.builtin.copy:
+    src: "{{ project_root }}/scripts/"
+    dest: "{{ git_server_dir }}/scripts/"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Start Forgejo and PostgreSQL services
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  register: compose_up_result
+  changed_when: "'Started' in compose_up_result.stdout or 'Created' in compose_up_result.stdout"
+
+- name: Wait for Forgejo web port to respond
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ forgejo_http_port }}"
+    delay: 3
+    timeout: 60
+    state: started
+
+- name: Check if administrator account exists
+  ansible.builtin.command:
+    cmd: >
+      docker compose exec -T db psql -U {{ postgres_user }} -d {{ postgres_db }}
+      -tAc "SELECT COUNT(*) FROM \"user\";"
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  register: user_count_check
+  changed_when: false
+  failed_when: false
+
+- name: Create initial administrator account if no users exist
+  ansible.builtin.command:
+    cmd: >
+      docker compose exec --user git server forgejo admin user create
+      --admin
+      --username {{ admin_user }}
+      --password {{ admin_password }}
+      --email {{ admin_email }}
+      --must-change-password=false
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
+  when: user_count_check.rc == 0 and (user_count_check.stdout | trim) == "0"
+  register: create_admin_result
+  changed_when: true
+
+- name: Handle optional backup restore if specified
+  when: git_server_restore_file is defined and git_server_restore_file != ""
+  block:
+    - name: Ensure target backup directory exists
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Copy backup archive to target host
+      ansible.builtin.copy:
+        src: "{{ git_server_restore_file }}"
+        dest: "{{ backup_dir }}/restore-target.zip"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+
+    - name: Execute restore inside target host
+      ansible.builtin.command:
+        cmd: make restore FILE={{ backup_dir }}/restore-target.zip CONFIRM=y
+        chdir: "{{ git_server_dir }}"
+      become_user: "{{ deploy_user }}"
+      register: restore_result
+      changed_when: true

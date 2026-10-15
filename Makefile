@@ -14,3 +14,4 @@ include make/service.mk
 include make/admin.mk
 include make/backup.mk
 include make/multipass.mk
+include make/ansible.mk

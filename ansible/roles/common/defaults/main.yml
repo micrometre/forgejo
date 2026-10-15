@@ -1,0 +1,15 @@
+---
+common_packages:
+  - curl
+  - wget
+  - git
+  - make
+  - jq
+  - unzip
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - htop
+  - net-tools
+
+inject_host_ssh_keys: true

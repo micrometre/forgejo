@@ -1,0 +1,28 @@
+---
+- name: Install Docker and Compose plugin
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: true
+
+- name: Add deployment user to docker group
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    groups: docker
+    append: true
+
+- name: Ensure docker service is enabled and running
+  ansible.builtin.service:
+    name: docker
+    state: "{{ docker_service_state }}"
+    enabled: "{{ docker_service_enabled }}"
+
+- name: Verify Docker is functional
+  ansible.builtin.command: docker info
+  register: docker_info_result
+  changed_when: false
+
+- name: Verify Docker Compose is functional
+  ansible.builtin.command: docker compose version
+  register: compose_version_result
+  changed_when: false

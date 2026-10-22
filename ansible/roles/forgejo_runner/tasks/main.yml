@@ -60,6 +60,28 @@
     path: "{{ forgejo_runner_dir }}/.runner"
   register: runner_file_stat
 
+- name: Synchronize runner labels in existing .runner file
+  when: runner_file_stat.stat.exists and not (forgejo_runner_force_register | bool)
+  block:
+    - name: Read existing .runner file
+      ansible.builtin.slurp:
+        src: "{{ forgejo_runner_dir }}/.runner"
+      register: existing_runner_b64
+
+    - name: Parse existing .runner JSON
+      ansible.builtin.set_fact:
+        existing_runner_json: "{{ existing_runner_b64.content | b64decode | from_json }}"
+
+    - name: Update labels in .runner file if changed
+      ansible.builtin.copy:
+        content: "{{ existing_runner_json | combine({'labels': forgejo_runner_labels}) | to_nice_json }}\n"
+        dest: "{{ forgejo_runner_dir }}/.runner"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+      when: existing_runner_json.labels | default([]) != forgejo_runner_labels
+      notify: Restart forgejo-runner
+
 - name: Register runner with Forgejo server
   when: not runner_file_stat.stat.exists or (forgejo_runner_force_register | bool)
   block:

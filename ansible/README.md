@@ -42,13 +42,13 @@ ansible/
 * Sets up user SSH directory and ensures host backup directories exist.
 
 ### 2. `docker`
-* Installs Docker CE Engine and the official Docker Compose v2 CLI plugin.
-* Adds the deploy user to the `docker` group.
+* Installs Docker CE Engine (`docker.io`), the official Docker Compose v2 CLI plugin (`docker-compose-v2`), and Docker Buildx (`docker-buildx`).
+* Adds the deploy user to the `docker` group and resets the SSH connection so group membership takes effect immediately.
 * Enables and starts `docker.service` with automatic health checks.
 
 ### 3. `git_server`
 * Creates application directory structure (`data/forgejo`, `data/postgres`, `make/`, `scripts/`).
-* Templates `docker-compose.yml` and `.env` from Jinja2 templates using inventory variables.
+* Templates `docker-compose.yml` and `.env` from Jinja2 templates using inventory variables (including `FORGEJO__actions__ENABLED=true` and `FORGEJO__actions__DEFAULT_ACTIONS_URL=https://github.com`).
 * Copies project Makefiles and utility scripts (`verify-backup.sh`, `backup-to-gdrive.sh`).
 * Starts containers (`docker compose up -d`) and waits for the HTTP healthcheck on port 3000.
 * Queries the database user count and automatically provisions the default administrator account if no users exist.
@@ -62,9 +62,10 @@ ansible/
 * **Post-Restore Audit**: Queries target database to confirm exact repository and user count, reporting a clean summary.
 
 ### 5. `forgejo_runner`
-* **GitHub Actions Compatibility**: Installs the official `forgejo-runner` binary (`v13.2.0`), Docker container execution support, and Node.js/npm for host-mode actions.
+* **GitHub Actions Compatibility**: Installs the official `forgejo-runner` binary (`v13.2.0`), Docker + Buildx, and Node.js/npm for host-mode and container-mode GitHub Actions execution.
 * **Zero-Touch Registration**: Automatically connects via SSH to the Forgejo server (`[git_servers]`), generates a registration token using `forgejo forgejo-cli actions generate-runner-token`, and registers the runner non-interactively.
-* **Standard Labels**: Registers `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `docker` (backed by `docker://node:20-bookworm`), and `self-hosted:host`.
+* **Label Synchronization**: Automatically updates `.runner` and `config.yml` whenever `forgejo_runner_labels` changes in `group_vars/all.yml`.
+* **Standard Labels**: Registers `ubuntu-latest:host`, `ubuntu-24.04:host`, `ubuntu-22.04:host`, `self-hosted:host` (allowing full access to `docker`, `docker compose`, `docker buildx`, `sudo`, and relative volume bind-mounts inside the dedicated `git-runner` VM), plus `docker:docker://node:20-bookworm`.
 * **Systemd Daemon**: Configures and starts `forgejo-runner.service` with automatic restart and job caching.
 
 ---
@@ -102,6 +103,12 @@ make ansible-restore FILE=/home/ubuntu/forgejo-backups/forgejo-dump-20261014_204
 
 # 5. Launch a Multipass VM and provision it end-to-end with Ansible
 make ansible-vm
+
+# 6. Launch a dedicated Multipass Runner VM ('git-runner') and register it with Forgejo
+make ansible-runner-vm
+
+# 7. Provision or update Forgejo Actions Runners on [git_runners] inventory hosts
+make ansible-runner
 ```
 
 You can also run playbooks directly using `ansible-playbook`:

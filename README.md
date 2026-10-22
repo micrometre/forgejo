@@ -563,16 +563,85 @@ make vm-clean
 
 ## Infrastructure as Code (Ansible)
 
-This repository includes a modular Ansible suite (`common`, `docker`, and `git_server` roles) to provision and manage the Git server across local Multipass VMs, bare-metal servers, or remote cloud instances.
+This repository includes a modular Ansible suite (`common`, `docker`, `git_server`, `forgejo_runner`, and `restore_backup` roles) to provision and manage the Git server and CI/CD runners across local Multipass VMs, bare-metal servers, or remote cloud instances.
 
 ```bash
-make ansible-ping       # Test SSH connectivity across all inventory hosts
-make ansible-deploy     # Run end-to-end site playbook on inventory hosts
-make ansible-app        # Fast update of Git server stack (skips OS packages)
-make ansible-vm         # Launch Multipass VM and provision completely with Ansible
+make ansible-ping        # Test SSH connectivity across all inventory hosts
+make ansible-deploy      # Run end-to-end site playbook on inventory hosts (servers + runners)
+make ansible-app         # Fast update of Git server stack (skips OS packages)
+make ansible-restore     # Restore latest host backup to inventory servers
+make ansible-vm          # Launch Multipass Git Server VM and provision with Ansible
+make ansible-runner-vm   # Launch Multipass Runner VM ('git-runner') and register with Forgejo
+make ansible-runner      # Provision/update Forgejo Actions Runner on [git_runners] hosts
 ```
 
 For full documentation on roles, inventory configuration, playbooks, and deploying to remote servers, see **[`ansible/README.md`](ansible/README.md)**.
+
+---
+
+## GitHub Actions & Forgejo Runner (`git-runner`)
+
+Forgejo includes built-in **Forgejo Actions**, which is compatible with standard **GitHub Actions** workflows (`.github/workflows/*.yml` or `.forgejo/workflows/*.yml`).
+
+### 1. Server Configuration (`app.ini` / `docker-compose.yml`)
+
+Actions is enabled automatically by the `git_server` Ansible role and configured to resolve standard GitHub Actions (such as `actions/checkout@v4`, `docker/setup-buildx-action@v3`, `actions/upload-artifact@v4`) directly from `https://github.com`:
+
+```ini
+[actions]
+ENABLED = true
+DEFAULT_ACTIONS_URL = https://github.com
+```
+
+### 2. Provisioning the Runner VM with Ansible
+
+To launch a dedicated Multipass VM (`git-runner`), install Docker + Buildx + Node.js + `forgejo-runner`, automatically generate a registration token from `git-vm`, and register the runner:
+
+```bash
+make ansible-runner-vm
+```
+
+To update the configuration or labels on an already-provisioned runner VM:
+
+```bash
+make ansible-runner
+```
+
+What this does automatically:
+1. Launches the `git-runner` Multipass VM (Ubuntu 24.04 LTS, 2 CPUs, 4GB RAM, 20GB disk).
+2. Injects your host SSH keys and adds `Host git.runner` to `~/.ssh/config` and `git-runner` under `[git_runners]` in `ansible/inventory/hosts.ini`.
+3. Installs Docker Engine (`docker.io`), Docker Compose v2 (`docker-compose-v2`), Docker Buildx (`docker-buildx`), and Node.js/npm.
+4. Downloads `/usr/local/bin/forgejo-runner` (`v13.2.0`), fetches a runner registration token from the Forgejo server via `forgejo forgejo-cli actions generate-runner-token`, and registers the runner non-interactively.
+5. Starts and enables the `forgejo-runner.service` systemd daemon.
+
+### 3. Runner Labels & Docker-Compose Workflows
+
+By default, [`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml) configures the runner labels on the dedicated `git-runner` VM as:
+
+| Workflow `runs-on:` | Runner Label Mapping | Execution Environment |
+|---|---|---|
+| `ubuntu-latest` | `ubuntu-latest:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
+| `ubuntu-24.04` | `ubuntu-24.04:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
+| `ubuntu-22.04` | `ubuntu-22.04:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
+| `self-hosted` | `self-hosted:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
+| `docker` | `docker:docker://node:20-bookworm` | Runs inside an isolated `node:20-bookworm` Docker container |
+
+> [!IMPORTANT]
+> **Why `ubuntu-latest:host` is used on the dedicated `git-runner` VM:**
+> Many projects (such as `fastapi-anpr-api`) run `docker compose up -d`, `docker buildx`, `sudo`, and relative bind mounts (`./output:/app/output`) inside CI steps. Running those workflows in `:host` mode on the isolated `git-runner` VM gives jobs native access to `docker`, `docker compose`, `docker buildx`, `sudo`, and real host filesystem paths so volume mounts and artifact uploads work identically to GitHub-hosted Ubuntu VMs.
+
+### 4. Monitoring & Troubleshooting the Runner
+
+```bash
+# Check runner systemd service status
+ssh git.runner "systemctl status forgejo-runner"
+
+# Stream live runner job execution logs
+ssh git.runner "journalctl -u forgejo-runner -f"
+
+# Check registered runners in the Forgejo database
+ssh git.server "docker compose -f /home/ubuntu/git-server/docker-compose.yml exec -T db psql -U forgejo -d forgejo -c 'SELECT id, name, version, agent_labels, last_online FROM action_runner;'"
+```
 
 ---
 
@@ -580,6 +649,8 @@ For full documentation on roles, inventory configuration, playbooks, and deployi
 
 ```
 .
+├── .github/workflows/
+│   └── ci.yml                  # Sample GitHub Actions CI workflow
 ├── docker-compose.yml          # Forgejo + PostgreSQL services
 ├── Makefile                    # Main orchestrator (includes make/*.mk)
 ├── make/                       # Modular makefiles
@@ -591,12 +662,13 @@ For full documentation on roles, inventory configuration, playbooks, and deployi
 │   └── ansible.mk              # Ansible IaC commands
 ├── ansible/                    # Infrastructure as Code
 │   ├── ansible.cfg             # Ansible configuration
-│   ├── inventory/              # Hosts inventory and variable definitions
-│   ├── playbooks/              # Site, deploy, and multipass playbooks
-│   └── roles/                  # common, docker, and git_server roles
+│   ├── inventory/              # Hosts inventory ([git_servers], [git_runners]) and group_vars
+│   ├── playbooks/              # site, deploy-git-server, deploy-runner, provision-*-multipass, restore
+│   └── roles/                  # common, docker, git_server, forgejo_runner, restore_backup
 ├── .env.example                # Configuration template (committed)
 ├── .env                        # Local configuration (gitignored)
 ├── scripts/
+│   ├── backup-all-branches.sh  # Syncs all repository branches to Forgejo
 │   ├── backup-to-gdrive.sh     # rclone upload to Google Drive
 │   ├── verify-backup.sh        # Archive integrity and completeness verification
 │   └── provision-vm.sh         # Multipass VM launch and provisioning script

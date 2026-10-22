@@ -19,5 +19,9 @@ admin_user: ubuntu
 admin_password: "admin-1234"
 admin_email: "admin@example.local"
 
+# Forgejo Actions (GitHub Actions compatible CI/CD)
+forgejo_actions_enabled: true
+forgejo_actions_url: "https://github.com"
+
 # If path is provided, restores this archive during playbook execution
 git_server_restore_file: ""

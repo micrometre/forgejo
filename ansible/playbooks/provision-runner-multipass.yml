@@ -1,0 +1,144 @@
+---
+# =============================================================================
+# Turnkey Playbook: Launch Multipass Runner VM & Provision with Ansible
+# =============================================================================
+# 1. Launches an Ubuntu VM ('git-runner') via Multipass on localhost
+# 2. Injects SSH authorized keys into the VM
+# 3. Persists runner IP into ansible/inventory/hosts.ini and ~/.ssh/config
+# 4. Ensures Forgejo Actions is enabled on the Forgejo Server VM ('git-vm')
+# 5. Installs Docker + Forgejo Runner and registers it with Forgejo Server
+
+- name: Launch and Prepare Multipass Runner VM
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  vars:
+    runner_vm_name: "git-runner"
+    runner_vm_image: "noble"
+    runner_vm_cpus: 2
+    runner_vm_memory: "4G"
+    runner_vm_disk: "20G"
+
+  tasks:
+    - name: Verify multipass CLI is available
+      ansible.builtin.command: which multipass
+      register: multipass_check
+      changed_when: false
+      failed_when: multipass_check.rc != 0
+
+    - name: Check Runner VM status
+      ansible.builtin.command: "multipass info {{ runner_vm_name }}"
+      register: vm_info_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Launch Multipass Runner VM if not existing
+      ansible.builtin.command: >
+        multipass launch {{ runner_vm_image }}
+        --name {{ runner_vm_name }}
+        --cpus {{ runner_vm_cpus }}
+        --memory {{ runner_vm_memory }}
+        --disk {{ runner_vm_disk }}
+      when: vm_info_raw.rc != 0
+      register: vm_launch_result
+      changed_when: true
+
+    - name: Ensure Runner VM is started
+      ansible.builtin.command: "multipass start {{ runner_vm_name }}"
+      when: vm_info_raw.rc == 0 and 'Running' not in vm_info_raw.stdout
+      register: vm_start_result
+      changed_when: true
+
+    - name: Retrieve Runner VM IPv4 address
+      ansible.builtin.shell: >
+        multipass info {{ runner_vm_name }} | awk '/IPv4:/ {print $2}' | head -n1
+      register: vm_ip_raw
+      changed_when: false
+
+    - name: Set Runner VM IP fact
+      ansible.builtin.set_fact:
+        runner_vm_ip: "{{ vm_ip_raw.stdout | trim }}"
+
+    - name: Inject host SSH public keys into Runner VM
+      ansible.builtin.shell: >
+        multipass exec {{ runner_vm_name }} -- mkdir -p .ssh &&
+        cat ~/.ssh/*.pub 2>/dev/null | multipass exec {{ runner_vm_name }} -- tee -a .ssh/authorized_keys >/dev/null &&
+        multipass exec {{ runner_vm_name }} -- sort -u .ssh/authorized_keys -o .ssh/authorized_keys &&
+        multipass exec {{ runner_vm_name }} -- chmod 600 .ssh/authorized_keys
+      changed_when: true
+      failed_when: false
+
+    - name: Update ansible/inventory/hosts.ini with Runner VM IP
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../inventory/hosts.ini"
+        insertafter: '^\[git_runners\]'
+        regexp: '^{{ runner_vm_name }}\s+'
+        line: "{{ runner_vm_name }} ansible_host={{ runner_vm_ip }} ansible_user=ubuntu"
+        state: present
+
+    - name: Add Host git.runner entry to ~/.ssh/config
+      ansible.builtin.blockinfile:
+        path: "~/.ssh/config"
+        create: true
+        mode: "0600"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK: git.runner"
+        block: |
+          Host git.runner
+              HostName {{ runner_vm_ip }}
+              Port 22
+              User ubuntu
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+
+    - name: Add Multipass Runner VM to in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ runner_vm_name }}"
+        groups: git_runners
+        ansible_host: "{{ runner_vm_ip }}"
+        ansible_user: ubuntu
+
+    - name: Wait for SSH to become available on Runner VM
+      ansible.builtin.wait_for:
+        host: "{{ runner_vm_ip }}"
+        port: 22
+        delay: 2
+        timeout: 60
+        state: started
+
+- name: Enable Forgejo Actions on Git Server VM
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: git_server
+      tags: [git_server, app]
+
+- name: Provision Forgejo Actions Runner on Multipass VM
+  hosts: git_runners
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: docker
+      tags: [docker]
+
+    - role: forgejo_runner
+      tags: [runner, forgejo_runner]
+
+  post_tasks:
+    - name: Display Runner Summary
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Forgejo Actions Runner VM Ready!"
+          - "  Runner VM:       {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  SSH Shortcut:    ssh git.runner"
+          - "  Forgejo Server:  {{ forgejo_instance_url }}"
+          - "  Runner Labels:   {{ forgejo_runner_labels | join(', ') }}"
+          - "================================================================="
+      tags: [always]

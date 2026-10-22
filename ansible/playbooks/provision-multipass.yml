@@ -10,6 +10,7 @@
 - name: Launch and Prepare Multipass VM
   hosts: localhost
   connection: local
+  become: false
   gather_facts: false
   vars:
     vm_name: "git-server"

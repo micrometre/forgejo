@@ -1,0 +1,139 @@
+---
+# =============================================================================
+# Role: forgejo_runner
+# Installs, configures, and registers Forgejo Actions Runner (GitHub Actions CI)
+# =============================================================================
+
+- name: Install Node.js and npm for host-mode GitHub Actions compatibility
+  ansible.builtin.apt:
+    name:
+      - nodejs
+      - npm
+    state: present
+    update_cache: true
+
+- name: Determine system architecture for forgejo-runner binary
+  ansible.builtin.set_fact:
+    runner_arch: "{{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}"
+
+- name: Ensure Forgejo Runner directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+  loop:
+    - "{{ forgejo_runner_dir }}"
+    - "{{ forgejo_runner_dir }}/.cache"
+    - "{{ forgejo_runner_dir }}/.cache/act"
+    - "{{ forgejo_runner_dir }}/.cache/actcache"
+
+- name: Check installed forgejo-runner version
+  ansible.builtin.command: /usr/local/bin/forgejo-runner --version
+  register: installed_runner_version
+  changed_when: false
+  failed_when: false
+
+- name: Download forgejo-runner v{{ forgejo_runner_version }} binary
+  ansible.builtin.get_url:
+    url: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ forgejo_runner_version }}/forgejo-runner-{{ forgejo_runner_version }}-linux-{{ runner_arch }}"
+    dest: /usr/local/bin/forgejo-runner
+    owner: root
+    group: root
+    mode: "0755"
+    force: true
+  when: installed_runner_version.rc != 0 or (forgejo_runner_version not in installed_runner_version.stdout)
+  notify: Restart forgejo-runner
+
+- name: Render forgejo-runner config.yml
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ forgejo_runner_dir }}/config.yml"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+  notify: Restart forgejo-runner
+
+- name: Check if runner is already registered (.runner file exists)
+  ansible.builtin.stat:
+    path: "{{ forgejo_runner_dir }}/.runner"
+  register: runner_file_stat
+
+- name: Register runner with Forgejo server
+  when: not runner_file_stat.stat.exists or (forgejo_runner_force_register | bool)
+  block:
+    - name: Verify Forgejo server HTTP endpoint is reachable from runner
+      ansible.builtin.wait_for:
+        host: "{{ forgejo_server_host }}"
+        port: "{{ forgejo_http_port }}"
+        timeout: 30
+        state: started
+
+    - name: Generate runner registration token on Forgejo server ({{ forgejo_server_inventory_host }})
+      ansible.builtin.command:
+        cmd: >
+          docker compose exec -T --user git server
+          forgejo forgejo-cli actions generate-runner-token
+          -c /data/gitea/conf/app.ini
+        chdir: "{{ git_server_dir }}"
+      delegate_to: "{{ forgejo_server_inventory_host }}"
+      become: true
+      become_user: "{{ deploy_user }}"
+      register: generated_token_raw
+      changed_when: false
+      when: forgejo_runner_token is not defined or forgejo_runner_token == ""
+
+    - name: Set resolved registration token fact
+      ansible.builtin.set_fact:
+        resolved_runner_token: "{{ forgejo_runner_token if (forgejo_runner_token is defined and forgejo_runner_token != '') else (generated_token_raw.stdout | trim) }}"
+
+    - name: Execute forgejo-runner register
+      ansible.builtin.command:
+        cmd: >
+          /usr/local/bin/forgejo-runner register
+          --no-interactive
+          --instance "{{ forgejo_instance_url }}"
+          --token "{{ resolved_runner_token }}"
+          --name "{{ forgejo_runner_name }}"
+          --labels "{{ forgejo_runner_labels | join(',') }}"
+        chdir: "{{ forgejo_runner_dir }}"
+      become: true
+      become_user: "{{ deploy_user }}"
+      register: register_result
+      changed_when: true
+      notify: Restart forgejo-runner
+
+- name: Pre-pull default job container image ({{ forgejo_runner_default_image }})
+  ansible.builtin.command:
+    cmd: "docker pull {{ forgejo_runner_default_image }}"
+  become: true
+  become_user: "{{ deploy_user }}"
+  register: docker_pull_result
+  changed_when: "'Downloaded newer image' in docker_pull_result.stdout"
+  when: forgejo_runner_default_image is defined and forgejo_runner_default_image != ""
+
+- name: Install forgejo-runner systemd service unit
+  ansible.builtin.template:
+    src: forgejo-runner.service.j2
+    dest: /etc/systemd/system/forgejo-runner.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart forgejo-runner
+
+- name: Enable and start forgejo-runner service
+  ansible.builtin.systemd:
+    name: forgejo-runner
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Flush handlers to ensure service is restarted if config changed
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify forgejo-runner service is active
+  ansible.builtin.command: systemctl is-active forgejo-runner
+  register: runner_service_status
+  changed_when: false
+  failed_when: runner_service_status.stdout | trim != 'active'

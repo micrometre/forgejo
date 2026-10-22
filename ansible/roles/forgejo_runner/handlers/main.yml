@@ -1,0 +1,7 @@
+---
+- name: Restart forgejo-runner
+  ansible.builtin.systemd:
+    name: forgejo-runner
+    daemon_reload: true
+    state: restarted
+    enabled: true

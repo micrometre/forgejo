@@ -1,0 +1,22 @@
+[Unit]
+Description=Forgejo Actions Runner ({{ forgejo_runner_name }})
+Documentation=https://forgejo.org/docs/latest/admin/actions/
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User={{ deploy_user }}
+Group=docker
+WorkingDirectory={{ forgejo_runner_dir }}
+ExecStart=/usr/local/bin/forgejo-runner daemon --config {{ forgejo_runner_dir }}/config.yml
+Restart=always
+RestartSec=5
+KillMode=process
+TimeoutStopSec=60
+Environment="HOME=/home/{{ deploy_user }}"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target

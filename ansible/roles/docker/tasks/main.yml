@@ -11,6 +11,9 @@
     groups: docker
     append: true
 
+- name: Reset SSH connection to apply docker group membership
+  ansible.builtin.meta: reset_connection
+
 - name: Ensure docker service is enabled and running
   ansible.builtin.service:
     name: docker

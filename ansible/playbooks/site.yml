@@ -31,3 +31,30 @@
           - "  Admin User:   {{ admin_user }}"
           - "================================================================="
       tags: [always]
+
+- name: Provision Forgejo Actions Runners
+  hosts: git_runners
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: docker
+      tags: [docker]
+
+    - role: forgejo_runner
+      tags: [runner, forgejo_runner]
+
+  post_tasks:
+    - name: Display runner info
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Runner Deployment Successful!"
+          - "  Runner Host:    {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  Forgejo Server: {{ forgejo_instance_url }}"
+          - "  Labels:         {{ forgejo_runner_labels | join(', ') }}"
+          - "================================================================="
+      tags: [always]

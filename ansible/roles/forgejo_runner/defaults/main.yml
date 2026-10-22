@@ -1,0 +1,35 @@
+---
+# =============================================================================
+# Role Defaults: forgejo_runner
+# =============================================================================
+deploy_user: ubuntu
+
+forgejo_runner_version: "13.2.0"
+forgejo_runner_name: "{{ inventory_hostname }}"
+forgejo_runner_dir: "/home/{{ deploy_user }}/forgejo-runner"
+forgejo_runner_capacity: 2
+
+# Forgejo server connection settings
+# Automatically resolves from the first host in [git_servers] if not overridden
+forgejo_server_inventory_host: "{{ groups['git_servers'][0] | default('git-vm') }}"
+forgejo_server_host: "{{ hostvars[forgejo_server_inventory_host]['ansible_host'] | default('10.134.198.130') }}"
+forgejo_http_port: 3000
+forgejo_instance_url: "http://{{ forgejo_server_host }}:{{ forgejo_http_port }}"
+git_server_dir: "/home/{{ deploy_user }}/git-server"
+
+# Optional explicit registration token (if empty, automatically generated via SSH to git_servers)
+forgejo_runner_token: ""
+
+# Force re-registration even if .runner file exists
+forgejo_runner_force_register: false
+
+# Default labels mapping GitHub Actions runner names to execution environments
+forgejo_runner_labels:
+  - "ubuntu-latest:docker://node:20-bookworm"
+  - "ubuntu-24.04:docker://node:20-bookworm"
+  - "ubuntu-22.04:docker://node:20-bookworm"
+  - "docker:docker://node:20-bookworm"
+  - "self-hosted:host"
+
+# Pre-pull default container image for fast first job execution
+forgejo_runner_default_image: "node:20-bookworm"

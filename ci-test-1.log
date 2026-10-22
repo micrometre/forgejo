@@ -1,0 +1,245 @@
+2026-10-21T19:42:01.0842330Z Runner cc0cda7a-ce43-4997-a832-38dd494d7f96 (version:v13.2.0) received task 1 of job test, triggered by event: push
+2026-10-21T19:42:01.0877075Z workflow prepared
+2026-10-21T19:42:01.0956965Z 🚀  Start image=node:20-bookworm
+2026-10-21T19:42:01.1152379Z   🐳  docker create image=node:20-bookworm platform=linux/amd64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="bridge"
+2026-10-21T19:42:01.5122082Z   🐳  docker run image=node:20-bookworm platform=linux/amd64 entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="bridge"
+2026-10-21T19:42:01.7082900Z   ☁️  git clone 'https://github.com/actions/checkout' # ref=v4
+2026-10-21T19:42:02.1100501Z   ☁️  git fetch 'https://github.com/actions/checkout' # ref=v4
+2026-10-21T19:42:02.8050347Z   ☁️  git clone 'https://github.com/docker/setup-buildx-action' # ref=v3
+2026-10-21T19:42:03.1357834Z   ☁️  git fetch 'https://github.com/docker/setup-buildx-action' # ref=v3
+2026-10-21T19:42:04.4964156Z   ☁️  git clone 'https://github.com/actions/upload-artifact' # ref=v4
+2026-10-21T19:42:04.9079123Z   ☁️  git fetch 'https://github.com/actions/upload-artifact' # ref=v4
+2026-10-21T19:42:05.7155001Z ⭐ Run Main Checkout repository
+2026-10-21T19:42:05.7167334Z   🐳  docker cp src=/home/ubuntu/forgejo-runner/.cache/act/54/21d4b0174e28f797366381e7d0bc9638850ec8dfab71a67b58691a622aa83a/ dst=/var/run/act/actions/54/21d4b0174e28f797366381e7d0bc9638850ec8dfab71a67b58691a622aa83a/
+2026-10-21T19:42:05.7255242Z   🐳  docker exec cmd=[node /var/run/act/actions/54/21d4b0174e28f797366381e7d0bc9638850ec8dfab71a67b58691a622aa83a/dist/index.js] user= workdir=
+2026-10-21T19:42:05.8054155Z   ❓ add-matcher /run/act/actions/54/21d4b0174e28f797366381e7d0bc9638850ec8dfab71a67b58691a622aa83a/dist/problem-matcher.json
+2026-10-21T19:42:05.8054440Z ::add-matcher::/run/act/actions/54/21d4b0174e28f797366381e7d0bc9638850ec8dfab71a67b58691a622aa83a/dist/problem-matcher.json
+2026-10-21T19:42:05.8056362Z Syncing repository: ubuntu/fastapi-anpr-api
+2026-10-21T19:42:05.8058624Z ##[group]Getting Git version info
+2026-10-21T19:42:05.8059871Z Working directory is '/workspace/ubuntu/fastapi-anpr-api'
+2026-10-21T19:42:05.8079463Z [command]/usr/bin/git version
+2026-10-21T19:42:05.8110149Z git version 2.39.5
+2026-10-21T19:42:05.8137500Z ##[endgroup]
+2026-10-21T19:42:05.8150817Z Temporarily overriding HOME='/tmp/797173d4-a198-4f61-b606-65e9d8a8e0b0' before making global git config changes
+2026-10-21T19:42:05.8151503Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T19:42:05.8158314Z [command]/usr/bin/git config --global --add safe.directory /workspace/ubuntu/fastapi-anpr-api
+2026-10-21T19:42:05.8203311Z Deleting the contents of '/workspace/ubuntu/fastapi-anpr-api'
+2026-10-21T19:42:05.8203436Z ##[group]Initializing the repository
+2026-10-21T19:42:05.8205284Z [command]/usr/bin/git init /workspace/ubuntu/fastapi-anpr-api
+2026-10-21T19:42:05.8224754Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T19:42:05.8224889Z hint: is subject to change. To configure the initial branch name to use in all
+2026-10-21T19:42:05.8224931Z hint: of your new repositories, which will suppress this warning, call:
+2026-10-21T19:42:05.8224967Z hint: 
+2026-10-21T19:42:05.8225019Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T19:42:05.8225054Z hint: 
+2026-10-21T19:42:05.8225087Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T19:42:05.8225124Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T19:42:05.8225160Z hint: 
+2026-10-21T19:42:05.8225193Z hint: 	git branch -m <name>
+2026-10-21T19:42:05.8227886Z Initialized empty Git repository in /workspace/ubuntu/fastapi-anpr-api/.git/
+2026-10-21T19:42:05.8235852Z [command]/usr/bin/git remote add origin http://10.134.198.130:3000/ubuntu/fastapi-anpr-api
+2026-10-21T19:42:05.8256197Z ##[endgroup]
+2026-10-21T19:42:05.8256313Z ##[group]Disabling automatic garbage collection
+2026-10-21T19:42:05.8259367Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T19:42:05.8275214Z ##[endgroup]
+2026-10-21T19:42:05.8275337Z ##[group]Setting up auth
+2026-10-21T19:42:05.8279203Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T19:42:05.8299569Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T19:42:05.8415370Z [command]/usr/bin/git config --local --name-only --get-regexp http\.http\:\/\/10\.134\.198\.130\:3000\/\.extraheader
+2026-10-21T19:42:05.8430751Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.http\:\/\/10\.134\.198\.130\:3000\/\.extraheader' && git config --local --unset-all 'http.http://10.134.198.130:3000/.extraheader' || :"
+2026-10-21T19:42:05.8548888Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T19:42:05.8570710Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T19:42:05.8719524Z [command]/usr/bin/git config --local http.http://10.134.198.130:3000/.extraheader AUTHORIZATION: basic ***
+2026-10-21T19:42:05.8738884Z ##[endgroup]
+2026-10-21T19:42:05.8739259Z ##[group]Fetching the repository
+2026-10-21T19:42:05.8743838Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c174b0ad78926cda2cfefdb658593595639063dc:refs/remotes/origin/main
+2026-10-21T19:42:05.9804339Z From http://10.134.198.130:3000/ubuntu/fastapi-anpr-api
+2026-10-21T19:42:05.9804622Z  * [new ref]         c174b0ad78926cda2cfefdb658593595639063dc -> origin/main
+2026-10-21T19:42:05.9815089Z ##[endgroup]
+2026-10-21T19:42:05.9815219Z ##[group]Determining the checkout info
+2026-10-21T19:42:05.9816173Z ##[endgroup]
+2026-10-21T19:42:05.9818900Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T19:42:05.9839267Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T19:42:05.9854064Z ##[group]Checking out the ref
+2026-10-21T19:42:05.9855738Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-21T19:42:05.9978755Z Switched to a new branch 'main'
+2026-10-21T19:42:05.9979399Z branch 'main' set up to track 'origin/main'.
+2026-10-21T19:42:05.9981543Z ##[endgroup]
+2026-10-21T19:42:06.0001772Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T19:42:06.0013350Z c174b0ad78926cda2cfefdb658593595639063dc
+2026-10-21T19:42:06.0020568Z ::remove-matcher owner=checkout-git::
+2026-10-21T19:42:06.2116898Z ##[group]Docker info
+2026-10-21T19:42:06.2125024Z Unable to locate executable file: docker. Please verify either the file path exists or the file can be found within a directory specified by the PATH environment variable. Also check the file mode to verify the file is executable.
+2026-10-21T19:42:06.2125927Z ##[endgroup]
+2026-10-21T19:42:06.2140730Z ##[group]Download buildx from GitHub Releases
+2026-10-21T19:42:06.3593082Z Use 0.38.1 version spec cache key for v0.38.1
+2026-10-21T19:42:06.3645182Z Downloading https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64
+2026-10-21T19:42:14.2615192Z Cached to /root/.docker/buildx/.bin/0.38.1/linux-x64/docker-buildx
+2026-10-21T19:42:14.2615317Z ##[endgroup]
+2026-10-21T19:42:14.2615427Z ##[group]Install buildx
+2026-10-21T19:42:14.2615470Z Standalone mode
+2026-10-21T19:42:14.3002765Z Fixing perms
+2026-10-21T19:42:14.3005185Z Added Buildx to PATH
+2026-10-21T19:42:14.3005561Z Binary path: /tmp/docker-actions-toolkit-l5Hips/buildx-bin-standalone/buildx
+2026-10-21T19:42:14.3007015Z ##[endgroup]
+2026-10-21T19:42:14.3007314Z ##[group]Buildx version
+2026-10-21T19:42:14.3027169Z [command]/tmp/docker-actions-toolkit-l5Hips/buildx-bin-standalone/buildx version
+2026-10-21T19:42:14.3189930Z github.com/docker/buildx v0.38.1 0dbe87f36ed472fe36b6796c3f70b4210a731fc5
+2026-10-21T19:42:14.3203396Z ##[endgroup]
+2026-10-21T19:42:14.3208662Z ##[group]Creating a new builder instance
+2026-10-21T19:42:14.3518223Z [command]/tmp/docker-actions-toolkit-l5Hips/buildx-bin-standalone/buildx create --name builder-288a01f0-683c-4e2f-951e-e4546d14d707 --driver docker-container --buildkitd-flags --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host --use
+2026-10-21T19:42:14.4183087Z builder-288a01f0-683c-4e2f-951e-e4546d14d707
+2026-10-21T19:42:14.4200158Z ##[endgroup]
+2026-10-21T19:42:14.4200459Z ##[group]Booting builder
+2026-10-21T19:42:14.4231011Z [command]/tmp/docker-actions-toolkit-l5Hips/buildx-bin-standalone/buildx inspect --bootstrap --builder builder-288a01f0-683c-4e2f-951e-e4546d14d707
+2026-10-21T19:42:14.4409762Z #1 [internal] booting buildkit
+2026-10-21T19:42:14.5915884Z #1 pulling image moby/buildkit:buildx-stable-1
+2026-10-21T19:42:29.4881242Z #1 pulling image moby/buildkit:buildx-stable-1 15.0s done
+2026-10-21T19:42:29.6517258Z #1 creating container buildx_buildkit_builder-288a01f0-683c-4e2f-951e-e4546d14d7070
+2026-10-21T19:42:30.0238544Z #1 creating container buildx_buildkit_builder-288a01f0-683c-4e2f-951e-e4546d14d7070 0.5s done
+2026-10-21T19:42:30.0420491Z #1 DONE 15.6s
+2026-10-21T19:42:30.0627924Z Name:          builder-288a01f0-683c-4e2f-951e-e4546d14d707
+2026-10-21T19:42:30.0628203Z Driver:        docker-container
+2026-10-21T19:42:30.0628261Z Last Activity: 2026-10-21 19:42:14 +0000 UTC
+2026-10-21T19:42:30.0628328Z 
+2026-10-21T19:42:30.0628389Z Nodes:
+2026-10-21T19:42:30.0630563Z Name:                  builder-288a01f0-683c-4e2f-951e-e4546d14d7070
+2026-10-21T19:42:30.0630655Z Endpoint:              unix:///var/run/docker.sock
+2026-10-21T19:42:30.0630716Z Status:                running
+2026-10-21T19:42:30.0630764Z BuildKit daemon flags: --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
+2026-10-21T19:42:30.0630804Z BuildKit version:      v0.33.1
+2026-10-21T19:42:30.0630854Z Platforms:             linux/amd64, linux/amd64/v2, linux/amd64/v3, linux/386
+2026-10-21T19:42:30.0630891Z Labels:
+2026-10-21T19:42:30.0630946Z  org.mobyproject.buildkit.worker.executor:         oci
+2026-10-21T19:42:30.0630981Z  org.mobyproject.buildkit.worker.hostname:         712ea4707674
+2026-10-21T19:42:30.0636926Z  org.mobyproject.buildkit.worker.network:          host
+2026-10-21T19:42:30.0637002Z  org.mobyproject.buildkit.worker.oci.process-mode: sandbox
+2026-10-21T19:42:30.0637042Z  org.mobyproject.buildkit.worker.selinux.enabled:  false
+2026-10-21T19:42:30.0637104Z  org.mobyproject.buildkit.worker.snapshotter:      overlayfs
+2026-10-21T19:42:30.0637141Z GC Policy rule#0:
+2026-10-21T19:42:30.0637186Z  All:            false
+2026-10-21T19:42:30.0637237Z  Filters:        type==source.local type==exec.cachemount type==source.git.checkout
+2026-10-21T19:42:30.0637283Z  Keep Duration:  48h0m0s
+2026-10-21T19:42:30.0637314Z  Max Used Space: 488.3MiB
+2026-10-21T19:42:30.0637347Z GC Policy rule#1:
+2026-10-21T19:42:30.0637423Z  All:            false
+2026-10-21T19:42:30.0637456Z  Keep Duration:  1440h0m0s
+2026-10-21T19:42:30.0637504Z  Reserved Space: 1.863GiB
+2026-10-21T19:42:30.0637536Z  Max Used Space: 13.97GiB
+2026-10-21T19:42:30.0637579Z  Min Free Space: 3.725GiB
+2026-10-21T19:42:30.0637610Z GC Policy rule#2:
+2026-10-21T19:42:30.0637649Z  All:            false
+2026-10-21T19:42:30.0637693Z  Reserved Space: 1.863GiB
+2026-10-21T19:42:30.0637723Z  Max Used Space: 13.97GiB
+2026-10-21T19:42:30.0637765Z  Min Free Space: 3.725GiB
+2026-10-21T19:42:30.0637802Z GC Policy rule#3:
+2026-10-21T19:42:30.0637841Z  All:            true
+2026-10-21T19:42:30.0637873Z  Reserved Space: 1.863GiB
+2026-10-21T19:42:30.0637902Z  Max Used Space: 13.97GiB
+2026-10-21T19:42:30.0637938Z  Min Free Space: 3.725GiB
+2026-10-21T19:42:30.0649177Z ##[endgroup]
+2026-10-21T19:42:30.1022608Z ##[group]Inspect builder
+2026-10-21T19:42:30.1024138Z {
+2026-10-21T19:42:30.1024416Z   "nodes": [
+2026-10-21T19:42:30.1024489Z     {
+2026-10-21T19:42:30.1024526Z       "name": "builder-288a01f0-683c-4e2f-951e-e4546d14d7070",
+2026-10-21T19:42:30.1024590Z       "endpoint": "unix:///var/run/docker.sock",
+2026-10-21T19:42:30.1024624Z       "status": "running",
+2026-10-21T19:42:30.1024670Z       "buildkitd-flags": "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host",
+2026-10-21T19:42:30.1024714Z       "buildkit": "v0.33.1",
+2026-10-21T19:42:30.1024748Z       "platforms": "linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386",
+2026-10-21T19:42:30.1024786Z       "features": {
+2026-10-21T19:42:30.1025834Z         "Automatically load images to the Docker Engine image store": true,
+2026-10-21T19:42:30.1025899Z         "Cache export": true,
+2026-10-21T19:42:30.1025933Z         "Direct push": true,
+2026-10-21T19:42:30.1025986Z         "Docker exporter": true,
+2026-10-21T19:42:30.1026055Z         "Multi-platform build": true,
+2026-10-21T19:42:30.1026140Z         "OCI exporter": true
+2026-10-21T19:42:30.1026190Z       },
+2026-10-21T19:42:30.1026223Z       "labels": {
+2026-10-21T19:42:30.1026284Z         "org.mobyproject.buildkit.worker.executor": "oci",
+2026-10-21T19:42:30.1026321Z         "org.mobyproject.buildkit.worker.hostname": "712ea4707674",
+2026-10-21T19:42:30.1026365Z         "org.mobyproject.buildkit.worker.network": "host",
+2026-10-21T19:42:30.1026399Z         "org.mobyproject.buildkit.worker.oci.process-mode": "sandbox",
+2026-10-21T19:42:30.1026438Z         "org.mobyproject.buildkit.worker.selinux.enabled": "false",
+2026-10-21T19:42:30.1026485Z         "org.mobyproject.buildkit.worker.snapshotter": "overlayfs"
+2026-10-21T19:42:30.1026520Z       },
+2026-10-21T19:42:30.1026560Z       "gcPolicy": [
+2026-10-21T19:42:30.1026599Z         {
+2026-10-21T19:42:30.1026642Z           "all": false,
+2026-10-21T19:42:30.1026673Z           "filter": [
+2026-10-21T19:42:30.1026706Z             "type==source.local type==exec.cachemount type==source.git.checkout"
+2026-10-21T19:42:30.1026751Z           ],
+2026-10-21T19:42:30.1026781Z           "keepDuration": "48h0m0s",
+2026-10-21T19:42:30.1026815Z           "maxUsedSpace": "488.3MiB"
+2026-10-21T19:42:30.1026847Z         },
+2026-10-21T19:42:30.1026887Z         {
+2026-10-21T19:42:30.1026918Z           "all": false,
+2026-10-21T19:42:30.1026948Z           "keepDuration": "1440h0m0s",
+2026-10-21T19:42:30.1026990Z           "reservedSpace": "1.863GiB",
+2026-10-21T19:42:30.1027020Z           "maxUsedSpace": "13.97GiB",
+2026-10-21T19:42:30.1027066Z           "minFreeSpace": "3.725GiB"
+2026-10-21T19:42:30.1027098Z         },
+2026-10-21T19:42:30.1027144Z         {
+2026-10-21T19:42:30.1027175Z           "all": false,
+2026-10-21T19:42:30.1027205Z           "reservedSpace": "1.863GiB",
+2026-10-21T19:42:30.1027245Z           "maxUsedSpace": "13.97GiB",
+2026-10-21T19:42:30.1027276Z           "minFreeSpace": "3.725GiB"
+2026-10-21T19:42:30.1027322Z         },
+2026-10-21T19:42:30.1027353Z         {
+2026-10-21T19:42:30.1028125Z           "all": true,
+2026-10-21T19:42:30.1028206Z           "reservedSpace": "1.863GiB",
+2026-10-21T19:42:30.1028272Z           "maxUsedSpace": "13.97GiB",
+2026-10-21T19:42:30.1028380Z           "minFreeSpace": "3.725GiB"
+2026-10-21T19:42:30.1028458Z         }
+2026-10-21T19:42:30.1028527Z       ]
+2026-10-21T19:42:30.1028580Z     }
+2026-10-21T19:42:30.1028644Z   ],
+2026-10-21T19:42:30.1028724Z   "name": "builder-288a01f0-683c-4e2f-951e-e4546d14d707",
+2026-10-21T19:42:30.1028802Z   "driver": "docker-container",
+2026-10-21T19:42:30.1028871Z   "lastActivity": "2026-10-21T19:42:14.000Z"
+2026-10-21T19:42:30.1028925Z }
+2026-10-21T19:42:30.1042232Z ##[endgroup]
+2026-10-21T19:42:30.1713150Z /var/run/act/workflow/2.sh: line 2: docker: command not found
+2026-10-21T19:42:30.1763494Z ⚙️ [runner]: exitcode '127': command not found, please refer to https://github.com/nektos/act/issues/107 for more information
+2026-10-21T19:42:30.3808979Z ::warning::No files were found with the provided path: fastapi-config/output/test-report.html. No artifacts will be uploaded.
+2026-10-21T19:42:30.3943216Z ⭐ Run Post Set up Docker Buildx
+2026-10-21T19:42:30.4077735Z   🐳  docker exec cmd=[node /var/run/act/actions/b6/e3e98a1bdeb3aee408ee61c0b8f968cd698d8bb632aa1bd9869bb129877532/dist/index.js] user= workdir=
+2026-10-21T19:42:30.5843395Z   ❓  ::group::Removing builder
+2026-10-21T19:42:30.5843850Z ##[group]Removing builder
+2026-10-21T19:42:30.6247323Z [command]/tmp/docker-actions-toolkit-l5Hips/buildx-bin-standalone/buildx rm builder-288a01f0-683c-4e2f-951e-e4546d14d707
+2026-10-21T19:42:30.8205525Z builder-288a01f0-683c-4e2f-951e-e4546d14d707 removed
+2026-10-21T19:42:30.8209380Z   ❓  ::endgroup::
+2026-10-21T19:42:30.8209524Z ##[endgroup]
+2026-10-21T19:42:30.8210243Z   ❓  ::group::Cleaning up certificates
+2026-10-21T19:42:30.8210357Z ##[group]Cleaning up certificates
+2026-10-21T19:42:30.8213287Z   ❓  ::endgroup::
+2026-10-21T19:42:30.8213386Z ##[endgroup]
+2026-10-21T19:42:30.8214041Z   ❓  ::group::Post cache
+2026-10-21T19:42:30.8214139Z ##[group]Post cache
+2026-10-21T19:42:30.8214582Z Caching buildx-dl-bin-0.38.1-linux-x64 to GitHub Actions cache
+2026-10-21T19:42:30.8261969Z [command]/usr/bin/tar --posix -cf cache.tgz --exclude cache.tgz -P -C /workspace/ubuntu/fastapi-anpr-api --files-from manifest.txt -z
+2026-10-21T19:42:32.9709432Z Cache Size: ~22 MB (23445826 B)
+2026-10-21T19:42:32.9830381Z Cache saved successfully
+2026-10-21T19:42:32.9851648Z   ❓  ::endgroup::
+2026-10-21T19:42:32.9851772Z ##[endgroup]
+2026-10-21T19:42:32.9889317Z   ✅  Success - Post Set up Docker Buildx
+2026-10-21T19:42:32.9962659Z ⭐ Run Post Checkout repository
+2026-10-21T19:42:33.0073775Z   🐳  docker exec cmd=[node /var/run/act/actions/54/21d4b0174e28f797366381e7d0bc9638850ec8dfab71a67b58691a622aa83a/dist/index.js] user= workdir=
+2026-10-21T19:42:33.0938206Z [command]/usr/bin/git version
+2026-10-21T19:42:33.0960952Z git version 2.39.5
+2026-10-21T19:42:33.0977901Z   ⚙  ***
+2026-10-21T19:42:33.0987381Z Temporarily overriding HOME='/tmp/86cb0bb1-aacf-4b31-91fd-f37ac55a8e38' before making global git config changes
+2026-10-21T19:42:33.0987837Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T19:42:33.0991179Z [command]/usr/bin/git config --global --add safe.directory /workspace/ubuntu/fastapi-anpr-api
+2026-10-21T19:42:33.1011684Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T19:42:33.1035717Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T19:42:33.1164296Z [command]/usr/bin/git config --local --name-only --get-regexp http\.http\:\/\/10\.134\.198\.130\:3000\/\.extraheader
+2026-10-21T19:42:33.1177203Z http.http://10.134.198.130:3000/.extraheader
+2026-10-21T19:42:33.1186057Z [command]/usr/bin/git config --local --unset-all http.http://10.134.198.130:3000/.extraheader
+2026-10-21T19:42:33.1209112Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.http\:\/\/10\.134\.198\.130\:3000\/\.extraheader' && git config --local --unset-all 'http.http://10.134.198.130:3000/.extraheader' || :"
+2026-10-21T19:42:33.1360389Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T19:42:33.1377717Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T19:42:33.1541008Z   ✅  Success - Post Checkout repository
+2026-10-21T19:42:33.1603512Z 🏁  Job failed
+2026-10-21T19:42:33.3205213Z Job 'test' failed

@@ -4,6 +4,9 @@ A self-hosted [Forgejo](https://forgejo.org/) Git server running on Docker Compo
 
 Based on the official [Forgejo Docker installation guide](https://forgejo.org/docs/latest/admin/installation/docker/).
 
+
+
+
 | | |
 |---|---|
 | **Web UI** | <http://localhost:3000> |
@@ -118,10 +121,12 @@ Run `make` or `make help` to list every target.
 | Command | Description |
 |---|---|
 | `make ansible-ping` | Test SSH connectivity to all inventory servers |
-| `make ansible-deploy` | Run end-to-end site playbook on inventory hosts (`common` + `docker` + `git_server`) |
+| `make ansible-deploy` | Run end-to-end site playbook on inventory hosts (`common` + `docker` + `git_server` + `forgejo_runner`) |
 | `make ansible-app` | Fast deployment/update of Git server stack only (skips OS packages) |
 | `make ansible-restore [FILE=…]` | Transfer and restore host backup archive onto inventory servers |
 | `make ansible-vm` | Launch Multipass VM and provision completely with Ansible |
+| `make ansible-runner-vm` | Launch Multipass Runner VM (`git-runner`) and register it with Forgejo via Ansible |
+| `make ansible-runner` | Provision and register Forgejo Actions Runner on `[git_runners]` inventory hosts |
 
 *See [`ansible/README.md`](ansible/README.md) for role details, inventory configuration, and playbooks.*
 

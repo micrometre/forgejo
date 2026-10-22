@@ -11,21 +11,24 @@ This folder contains a production-ready Ansible automation suite to provision, c
 
 ```text
 ansible/
-├── ansible.cfg                    # Preconfigured SSH, pipelining, and inventory settings
+├── ansible.cfg                        # Preconfigured SSH, pipelining, and inventory settings
 ├── inventory/
-│   ├── hosts.ini                  # Target server definitions and host groups
+│   ├── hosts.ini                      # Target server & runner definitions ([git_servers], [git_runners])
 │   └── group_vars/
-│       └── all.yml                # Configurable ports, versions, paths, credentials
+│       └── all.yml                    # Configurable ports, versions, paths, credentials, runner labels
 ├── playbooks/
-│   ├── site.yml                   # Master playbook: runs common + docker + git_server
-│   ├── deploy-git-server.yml      # Fast app deployment (skips OS packages)
-│   ├── provision-multipass.yml    # Turnkey: launches Multipass VM and provisions it
-│   └── restore.yml                # Restores host backup archive onto target server(s)
+│   ├── site.yml                       # Master playbook: provisions git_servers and git_runners
+│   ├── deploy-git-server.yml          # Fast app deployment (skips OS packages)
+│   ├── deploy-runner.yml              # Provisions and registers Forgejo Actions runners
+│   ├── provision-multipass.yml        # Turnkey: launches Multipass Git Server VM and provisions it
+│   ├── provision-runner-multipass.yml # Turnkey: launches Multipass Runner VM and registers with Forgejo
+│   └── restore.yml                    # Restores host backup archive onto target server(s)
 └── roles/
-    ├── common/                    # OS baseline: apt cache, essential tools, SSH keys
-    ├── docker/                    # Installs Docker CE & Docker Compose plugin
-    ├── git_server/                # Templates .env & compose, starts containers, creates admin
-    └── restore_backup/            # Auto-locates, transfers, and restores host backup archive
+    ├── common/                        # OS baseline: apt cache, essential tools, SSH keys
+    ├── docker/                        # Installs Docker CE & Docker Compose plugin
+    ├── git_server/                    # Templates .env & compose, enables Actions, starts containers
+    ├── forgejo_runner/                # Installs Forgejo Runner, auto-fetches token, registers & runs daemon
+    └── restore_backup/                # Auto-locates, transfers, and restores host backup archive
 ```
 
 ---
@@ -58,15 +61,23 @@ ansible/
 * **SSH Key Doctor**: Fixes and regenerates Git SSH `authorized_keys`.
 * **Post-Restore Audit**: Queries target database to confirm exact repository and user count, reporting a clean summary.
 
+### 5. `forgejo_runner`
+* **GitHub Actions Compatibility**: Installs the official `forgejo-runner` binary (`v13.2.0`), Docker container execution support, and Node.js/npm for host-mode actions.
+* **Zero-Touch Registration**: Automatically connects via SSH to the Forgejo server (`[git_servers]`), generates a registration token using `forgejo forgejo-cli actions generate-runner-token`, and registers the runner non-interactively.
+* **Standard Labels**: Registers `ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`, `docker` (backed by `docker://node:20-bookworm`), and `self-hosted:host`.
+* **Systemd Daemon**: Configures and starts `forgejo-runner.service` with automatic restart and job caching.
+
 ---
 
 ## Playbooks
 
 | Playbook | Description | Target Hosts |
 |---|---|---|
-| `playbooks/site.yml` | Full end-to-end configuration (`common` → `docker` → `git_server`) | `git_servers` |
+| `playbooks/site.yml` | Full end-to-end configuration (`git_servers` + `git_runners`) | `git_servers`, `git_runners` |
 | `playbooks/deploy-git-server.yml` | Fast update of application stack only (skips OS package steps) | `git_servers` |
-| `playbooks/provision-multipass.yml` | Launches a Multipass VM locally and provisions it via Ansible | `localhost` + VM |
+| `playbooks/deploy-runner.yml` | Enables Forgejo Actions and provisions/registers runners | `git_servers`, `git_runners` |
+| `playbooks/provision-multipass.yml` | Launches a Multipass VM locally and provisions Git Server via Ansible | `localhost` + VM |
+| `playbooks/provision-runner-multipass.yml` | Launches `git-runner` Multipass VM, updates inventory/SSH, and registers with Forgejo | `localhost` + `git_servers` + `git_runners` |
 | `playbooks/restore.yml` | Transfers and restores host backup archive to target server(s) | `git_servers` |
 
 ---

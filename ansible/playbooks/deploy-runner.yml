@@ -1,0 +1,43 @@
+---
+# =============================================================================
+# Playbook: Deploy and Register Forgejo Actions Runner
+# =============================================================================
+# Usage:
+#   ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/deploy-runner.yml
+
+- name: Ensure Forgejo Actions is Enabled on Git Server
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: git_server
+      tags: [git_server, app]
+
+- name: Provision and Register Forgejo Actions Runner
+  hosts: git_runners
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: docker
+      tags: [docker]
+
+    - role: forgejo_runner
+      tags: [runner, forgejo_runner]
+
+  post_tasks:
+    - name: Display Runner Status
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Forgejo Actions Runner Provisioned & Registered!"
+          - "  Runner Host:     {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  Forgejo Server:  {{ forgejo_instance_url }}"
+          - "  Labels:          {{ forgejo_runner_labels | join(', ') }}"
+          - "  Systemd Unit:    forgejo-runner.service (active)"
+          - "================================================================="
+      tags: [always]

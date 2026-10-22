@@ -15,6 +15,7 @@ BACKUP_DIR ?= $(or $(shell grep -E '^BACKUP_DIR=' $(ENV_FILE) 2>/dev/null | cut 
 
 # Multipass VM defaults
 VM_NAME ?= git-server
+RUNNER_VM_NAME ?= git-runner
 VM_CPUS ?= 2
 VM_MEM ?= 4G
 VM_DISK ?= 20G

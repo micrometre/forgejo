@@ -25,5 +25,19 @@ git_server_dir: "/home/{{ deploy_user }}/git-server"
 backup_dir: "/home/{{ deploy_user }}/forgejo-backups"
 rclone_remote: "gdrive:Forgejo-Backups"
 
+# Forgejo Actions (GitHub Actions compatible CI/CD)
+forgejo_actions_enabled: true
+forgejo_actions_url: "https://github.com"
+
+# Forgejo Runner settings
+forgejo_runner_version: "13.2.0"
+forgejo_runner_dir: "/home/{{ deploy_user }}/forgejo-runner"
+forgejo_runner_labels:
+  - "ubuntu-latest:docker://node:20-bookworm"
+  - "ubuntu-24.04:docker://node:20-bookworm"
+  - "ubuntu-22.04:docker://node:20-bookworm"
+  - "docker:docker://node:20-bookworm"
+  - "self-hosted:host"
+
 # Backup restoration (leave empty for clean deployment)
 # git_server_restore_file: ""

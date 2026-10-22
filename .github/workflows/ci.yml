@@ -1,0 +1,29 @@
+name: Infrastructure CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Scripts & Ansible Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify runner environment
+        run: |
+          echo "Runner OS: $(uname -a)"
+          echo "Repository: ${{ github.repository }}"
+          echo "Commit SHA: ${{ github.sha }}"
+
+      - name: Check shell scripts syntax
+        run: |
+          for script in scripts/*.sh; do
+            echo "Checking syntax of $script..."
+            bash -n "$script"
+          done
+          echo "All shell scripts passed syntax validation!"

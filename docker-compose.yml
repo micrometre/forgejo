@@ -23,6 +23,9 @@ services:
       - FORGEJO__server__SSH_LISTEN_PORT=22
       # Mark installation as complete so CLI commands work and web wizard is bypassed
       - FORGEJO__security__INSTALL_LOCK=true
+      # Forgejo Actions (GitHub Actions compatible workflows)
+      - FORGEJO__actions__ENABLED=${FORGEJO_ACTIONS_ENABLED:-true}
+      - FORGEJO__actions__DEFAULT_ACTIONS_URL=${FORGEJO_ACTIONS_URL:-https://github.com}
     networks:
       - forgejo
     volumes:

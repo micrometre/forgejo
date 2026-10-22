@@ -16,10 +16,13 @@ services:
       - FORGEJO__database__USER={{ postgres_user }}
       - FORGEJO__database__PASSWD={{ postgres_password }}
       - FORGEJO__server__DOMAIN={{ forgejo_domain }}
+      - FORGEJO__server__SSH_DOMAIN={{ forgejo_domain }}
       - FORGEJO__server__ROOT_URL={{ forgejo_root_url }}
       - FORGEJO__server__SSH_PORT={{ forgejo_ssh_port }}
       - FORGEJO__server__SSH_LISTEN_PORT=22
       - FORGEJO__security__INSTALL_LOCK=true
+      - FORGEJO__actions__ENABLED={{ forgejo_actions_enabled | default(true) | string | lower }}
+      - FORGEJO__actions__DEFAULT_ACTIONS_URL={{ forgejo_actions_url | default('https://github.com') }}
     networks:
       - forgejo
     volumes:

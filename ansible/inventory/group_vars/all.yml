@@ -33,11 +33,11 @@ forgejo_actions_url: "https://github.com"
 forgejo_runner_version: "13.2.0"
 forgejo_runner_dir: "/home/{{ deploy_user }}/forgejo-runner"
 forgejo_runner_labels:
-  - "ubuntu-latest:docker://node:20-bookworm"
-  - "ubuntu-24.04:docker://node:20-bookworm"
-  - "ubuntu-22.04:docker://node:20-bookworm"
-  - "docker:docker://node:20-bookworm"
+  - "ubuntu-latest:host"
+  - "ubuntu-24.04:host"
+  - "ubuntu-22.04:host"
   - "self-hosted:host"
+  - "docker:docker://node:20-bookworm"
 
 # Backup restoration (leave empty for clean deployment)
 # git_server_restore_file: ""

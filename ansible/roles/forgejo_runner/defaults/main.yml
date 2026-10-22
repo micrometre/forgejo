@@ -24,12 +24,14 @@ forgejo_runner_token: ""
 forgejo_runner_force_register: false
 
 # Default labels mapping GitHub Actions runner names to execution environments
+# Using :host on the dedicated git-runner VM ensures full access to docker,
+# docker compose, buildx, sudo, and host volume mounts.
 forgejo_runner_labels:
-  - "ubuntu-latest:docker://node:20-bookworm"
-  - "ubuntu-24.04:docker://node:20-bookworm"
-  - "ubuntu-22.04:docker://node:20-bookworm"
-  - "docker:docker://node:20-bookworm"
+  - "ubuntu-latest:host"
+  - "ubuntu-24.04:host"
+  - "ubuntu-22.04:host"
   - "self-hosted:host"
+  - "docker:docker://node:20-bookworm"
 
 # Pre-pull default container image for fast first job execution
 forgejo_runner_default_image: "node:20-bookworm"

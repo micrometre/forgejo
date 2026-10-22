@@ -2,6 +2,7 @@
 docker_packages:
   - docker.io
   - docker-compose-v2
+  - docker-buildx
 
 docker_service_state: started
 docker_service_enabled: true

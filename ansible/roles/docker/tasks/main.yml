@@ -29,3 +29,8 @@
   ansible.builtin.command: docker compose version
   register: compose_version_result
   changed_when: false
+
+- name: Verify Docker Buildx is functional
+  ansible.builtin.command: docker buildx version
+  register: buildx_version_result
+  changed_when: false

@@ -1,0 +1,24 @@
+// =============================================================================
+// Forgejo Runner Node.js Preload Hook
+// Managed by Ansible - role: forgejo_runner
+// =============================================================================
+// Upstream @actions/artifact v2+ (used by actions/upload-artifact@v4 and
+// actions/download-artifact@v4) throws GHESNotSupportedError whenever
+// GITHUB_SERVER_URL is not github.com / *.ghe.com / *.localhost, even though
+// Forgejo implements the v4Twirp artifact results service via ACTIONS_RESULTS_URL.
+//
+// When Node executes an upload/download/merge artifact action script inside the
+// runner's action cache, we normalize GITHUB_SERVER_URL so isGhes() returns false.
+try {
+  const script = (process.argv && process.argv[1]) ? String(process.argv[1]) : '';
+  if (
+    script.includes('/act/') &&
+    (script.endsWith('dist/upload/index.js') ||
+     script.endsWith('dist/download/index.js') ||
+     script.endsWith('dist/merge/index.js'))
+  ) {
+    process.env.GITHUB_SERVER_URL = 'https://github.com';
+  }
+} catch (_) {
+  // Ignore errors in preload hook
+}

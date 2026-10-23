@@ -23,6 +23,13 @@ services:
       - FORGEJO__security__INSTALL_LOCK=true
       - FORGEJO__actions__ENABLED={{ forgejo_actions_enabled | default(true) | string | lower }}
       - FORGEJO__actions__DEFAULT_ACTIONS_URL={{ forgejo_actions_url | default('https://github.com') }}
+      - FORGEJO__attachment__ENABLED=true
+      - FORGEJO__attachment__ALLOWED_TYPES=*/*
+      - FORGEJO__attachment__MAX_SIZE=1024
+      - FORGEJO__attachment__MAX_FILES=20
+      - FORGEJO__repository_0x2E_release__ALLOWED_TYPES=*/*
+      - FORGEJO__repository_0x2E_release__MAX_SIZE=1024
+      - FORGEJO__repository_0x2E_release__MAX_FILES=20
     networks:
       - forgejo
     volumes:

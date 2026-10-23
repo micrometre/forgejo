@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-#
 # backup_branches.sh
 # Synchronizes all branches from origin into local tracking branches and pushes them to the backup remote.
 #

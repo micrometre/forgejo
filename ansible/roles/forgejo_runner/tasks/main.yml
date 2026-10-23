@@ -4,11 +4,20 @@
 # Installs, configures, and registers Forgejo Actions Runner (GitHub Actions CI)
 # =============================================================================
 
-- name: Install Node.js and npm for host-mode GitHub Actions compatibility
+- name: Install Node.js, npm, and Linux .deb / Tauri build dependencies
   ansible.builtin.apt:
     name:
       - nodejs
       - npm
+      - build-essential
+      - dpkg-dev
+      - fakeroot
+      - file
+      - libssl-dev
+      - libxdo-dev
+      - libwebkit2gtk-4.1-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
     state: present
     update_cache: true
 
@@ -50,6 +59,15 @@
   ansible.builtin.template:
     src: config.yml.j2
     dest: "{{ forgejo_runner_dir }}/config.yml"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+  notify: Restart forgejo-runner
+
+- name: Deploy Node.js GHES artifact compatibility preload hook
+  ansible.builtin.template:
+    src: ghes-preload.cjs.j2
+    dest: "{{ forgejo_runner_dir }}/ghes-preload.cjs"
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
     mode: "0644"

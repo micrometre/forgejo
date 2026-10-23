@@ -17,6 +17,7 @@ KillMode=process
 TimeoutStopSec=60
 Environment="HOME=/home/{{ deploy_user }}"
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="NODE_OPTIONS=--require {{ forgejo_runner_dir }}/ghes-preload.cjs"
 
 [Install]
 WantedBy=multi-user.target

@@ -26,6 +26,14 @@ services:
       # Forgejo Actions (GitHub Actions compatible workflows)
       - FORGEJO__actions__ENABLED=${FORGEJO_ACTIONS_ENABLED:-true}
       - FORGEJO__actions__DEFAULT_ACTIONS_URL=${FORGEJO_ACTIONS_URL:-https://github.com}
+      # Allow large binary attachments (.deb, .apk, .exe, etc.) on Releases and Issues
+      - FORGEJO__attachment__ENABLED=true
+      - FORGEJO__attachment__ALLOWED_TYPES=*/*
+      - FORGEJO__attachment__MAX_SIZE=1024
+      - FORGEJO__attachment__MAX_FILES=20
+      - FORGEJO__repository_0x2E_release__ALLOWED_TYPES=*/*
+      - FORGEJO__repository_0x2E_release__MAX_SIZE=1024
+      - FORGEJO__repository_0x2E_release__MAX_FILES=20
     networks:
       - forgejo
     volumes:

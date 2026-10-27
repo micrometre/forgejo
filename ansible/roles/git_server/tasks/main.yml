@@ -54,6 +54,24 @@
     timeout: 60
     state: started
 
+- name: Configure Host git.vm SSH alias on controller for Git over SSH (port {{ forgejo_ssh_port }})
+  ansible.builtin.blockinfile:
+    path: "/home/{{ deploy_user }}/.ssh/config"
+    create: true
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: git.vm"
+    block: |
+      Host git.vm
+          HostName {{ '127.0.0.1' if (ansible_connection | default('') == 'local') else ansible_host }}
+          Port {{ forgejo_ssh_port }}
+          User git
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+  delegate_to: localhost
+  become: false
+
 - name: Check if administrator account exists
   ansible.builtin.command:
     cmd: >

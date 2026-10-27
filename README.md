@@ -2,10 +2,10 @@
 
 A self-hosted [Forgejo](https://forgejo.org/) Git server and [Forgejo Actions](https://forgejo.org/docs/latest/user/actions/) CI/CD runner infrastructure managed entirely as **Infrastructure as Code (Ansible)** on **libvirt + KVM** virtual machines (modeled after [`micrometre/ansible-kvm`](https://github.com/micrometre/ansible-kvm)).
 
-| Resource | VM Name | Static IP (`virbr0`) | SSH Shortcut | Details |
+| Resource | Host / VM Name | Address | SSH Shortcut | Details |
 |---|---|---|---|---|
-| **Git Server** | `git-server` | `192.168.122.100` | `ssh git-server` / `ssh git.server` | Forgejo 16 + PostgreSQL 16 (`http://192.168.122.100:3000`, Git SSH `git@git.vm` port `222`) |
-| **Actions Runner** | `git-runner` | `192.168.122.101` | `ssh git.runner` | Forgejo Runner `v13.2.0` + Docker + Buildx + Node.js/dpkg |
+| **Git Server** | `git-server` (Host) | `192.168.1.116` (LAN) / `100.71.242.87` (Tailscale) / `192.168.122.1` (`virbr0`) | `git@git.vm` (port `222`) | Forgejo 16 + PostgreSQL 16 running on the host via Ansible (`http://192.168.1.116:3000`) |
+| **Actions Runner** | `git-runner` (KVM VM) | `192.168.122.101` (`virbr0`) | `ssh git.runner` | Forgejo Runner `v13.2.0` + Docker + Buildx + Node.js/dpkg inside KVM |
 | **Backups** | Host & GDrive | `~/forgejo-backups/` | — | Automated via Ansible (`make backup` / `make restore`) + `rclone` offsite sync |
 
 ---
@@ -31,14 +31,14 @@ A self-hosted [Forgejo](https://forgejo.org/) Git server and [Forgejo Actions](h
 make configure_virtualization
 make configure_vm_manager
 
-# 2. Launch the 'git-server' KVM VM (192.168.122.100) and provision Forgejo + PostgreSQL
-make ansible-kvm-server
+# 2. Deploy Forgejo + PostgreSQL on the Host ('git-server')
+make ansible-server
 
 # 3. Launch the 'git-runner' KVM VM (192.168.122.101) and register Forgejo Actions Runner
 make ansible-kvm-runner
 
-# 4. Open the Forgejo Web UI
-xdg-open http://192.168.122.100:3000
+# 4. Open the Forgejo Web UI (from host, mobile on Wi-Fi, or Tailscale)
+xdg-open http://localhost:3000
 ```
 
 All settings (versions, ports, credentials, runner labels) are centrally managed in [`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml).
@@ -72,14 +72,13 @@ Run `make` or `make help` to list all available targets.
 
 | Command | Description |
 |---|---|
-| `make ansible-ping` | Test SSH connectivity to all inventory servers (`git-server`, `git-runner`) |
-| `make ansible-kvm-server` | Create KVM VM (`git-server`, `192.168.122.100`) and provision Forgejo Git Server with Ansible |
-| `make ansible-kvm-runner` | Create KVM Runner VM (`git-runner`, `192.168.122.101`) and register it with Forgejo via Ansible |
-| `make ansible-deploy` | Run full Ansible site playbook across `[git_servers]` and `[git_runners]` |
-| `make ansible-app` | Fast deployment/update of Git Server application stack only (skips OS packages) |
+| `make ansible-ping` | Test connectivity to all inventory hosts (`git-server` on host + `git-runner` KVM VM) |
+| `make ansible-server` / `make ansible-app` | Deploy/update Forgejo Git Server on the host (`[git_servers]`) |
+| `make ansible-kvm-runner` | Create KVM Runner VM (`git-runner`, `192.168.122.101`) and register it with Host Forgejo |
+| `make ansible-deploy` | Run full Ansible site playbook across `[git_servers]` (host) and `[git_runners]` (KVM) |
 | `make ansible-runner` | Provision and register Forgejo Actions Runner on `[git_runners]` inventory hosts |
-| `make ansible-backup` | Create a full Forgejo + PostgreSQL backup on `[git_servers]` and download to `~/forgejo-backups` |
-| `make ansible-restore [FILE=…]` | Transfer and restore a host backup archive onto `[git_servers]` |
+| `make ansible-backup` | Create a full Forgejo + PostgreSQL backup on `[git_servers]` and save to `~/forgejo-backups` |
+| `make ansible-restore [FILE=…]` | Restore a backup archive from `~/forgejo-backups` onto `[git_servers]` |
 
 ### Backups & Repository Sync (`make/backup.mk`)
 

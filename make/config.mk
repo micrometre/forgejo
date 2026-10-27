@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Configuration and Defaults (Ansible + KVM / Libvirt)
+# Configuration and Defaults (Host Git Server + KVM Runner)
 # -----------------------------------------------------------------------------
 
 .DEFAULT_GOAL := help
@@ -13,17 +13,17 @@ INVENTORY ?= $(ANSIBLE_DIR)/inventory/hosts.ini
 KVM_PLAYBOOK := $(ANSIBLE_DIR)/playbooks/configure-kvm.yml
 EXTRA_VARS ?=
 
-# KVM / Libvirt VM defaults (matching ansible-kvm)
+# KVM / Libvirt VM defaults (Runner runs in KVM, Server runs on Host)
 HOST_NAME ?= $(shell hostname)
-VM_NAME ?= git-server
+VM_NAME ?= git-runner
 RUNNER_VM_NAME ?= git-runner
 VM_DISTRO ?= noble
-VM_CPUS ?= 2
+VM_CPUS ?= 4
 RUNNER_VM_CPUS ?= 4
 VM_RAM ?= 4096
-VM_DISK ?= 20G
+VM_DISK ?= 60G
 RUNNER_VM_DISK ?= 60G
-VM_IP ?= 192.168.122.100
+VM_IP ?= 192.168.122.101
 RUNNER_VM_IP ?= 192.168.122.101
 
 .PHONY: help

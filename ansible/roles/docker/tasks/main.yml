@@ -1,9 +1,16 @@
 ---
-- name: Install Docker and Compose plugin
+- name: Check if Docker and Docker Compose are already installed
+  ansible.builtin.shell: command -v docker && docker compose version && docker buildx version
+  register: existing_docker_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Docker and Compose plugin if not already present
   ansible.builtin.apt:
     name: "{{ docker_packages }}"
     state: present
     update_cache: true
+  when: existing_docker_check.rc != 0
 
 - name: Add deployment user to docker group
   ansible.builtin.user:

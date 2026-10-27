@@ -73,11 +73,13 @@ enable_forwarding() {
 
 disable_forwarding() {
     echo "--> Removing iptables DNAT port forwarding rules for ${VM_IP}..."
-    sudo iptables -D FORWARD -d "${VM_IP}/32" -p tcp -m multiport --dports "${HTTP_PORT},${GIT_SSH_PORT}" -j ACCEPT 2>/dev/null || true
+    while sudo iptables -D FORWARD -d "${VM_IP}/32" -p tcp -m multiport --dports "${HTTP_PORT},${GIT_SSH_PORT}" -j ACCEPT 2>/dev/null; do :; done
     for PORT in "${HTTP_PORT}" "${GIT_SSH_PORT}"; do
-        sudo iptables -t nat -D PREROUTING -p tcp -d "${HOST_IP}" --dport "${PORT}" -j DNAT --to-destination "${VM_IP}:${PORT}" 2>/dev/null || true
-        sudo iptables -t nat -D OUTPUT -p tcp -d "${HOST_IP}" --dport "${PORT}" -j DNAT --to-destination "${VM_IP}:${PORT}" 2>/dev/null || true
-        sudo iptables -t nat -D POSTROUTING -p tcp -d "${VM_IP}" --dport "${PORT}" -j MASQUERADE 2>/dev/null || true
+        while sudo iptables -t nat -D PREROUTING -p tcp ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL --dport "${PORT}" -j DNAT --to-destination "${VM_IP}:${PORT}" 2>/dev/null; do :; done
+        while sudo iptables -t nat -D OUTPUT -p tcp ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL --dport "${PORT}" -j DNAT --to-destination "${VM_IP}:${PORT}" 2>/dev/null; do :; done
+        while sudo iptables -t nat -D PREROUTING -p tcp -d "${HOST_IP}" --dport "${PORT}" -j DNAT --to-destination "${VM_IP}:${PORT}" 2>/dev/null; do :; done
+        while sudo iptables -t nat -D OUTPUT -p tcp -d "${HOST_IP}" --dport "${PORT}" -j DNAT --to-destination "${VM_IP}:${PORT}" 2>/dev/null; do :; done
+        while sudo iptables -t nat -D POSTROUTING -p tcp -d "${VM_IP}" --dport "${PORT}" -j MASQUERADE 2>/dev/null; do :; done
     done
     echo "✅ Port forwarding rules removed."
 }

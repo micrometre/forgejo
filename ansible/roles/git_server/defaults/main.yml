@@ -8,7 +8,7 @@ postgres_version: "16-alpine"
 
 forgejo_http_port: 3000
 forgejo_ssh_port: 222
-forgejo_domain: "{{ ansible_host | default('localhost') }}"
+forgejo_domain: "{{ ansible_default_ipv4.address | default(ansible_host) | default('localhost') }}"
 forgejo_root_url: "http://{{ forgejo_domain }}:{{ forgejo_http_port }}/"
 
 postgres_db: forgejo

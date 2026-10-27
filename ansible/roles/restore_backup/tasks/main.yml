@@ -80,14 +80,16 @@
   changed_when: true
 
 - name: Update restored app.ini domain and root URL to match target server
+  vars:
+    effective_domain: "{{ forgejo_domain | default(ansible_default_ipv4.address) | default(ansible_host) }}"
   ansible.builtin.replace:
     path: "{{ git_server_dir }}/data/forgejo/gitea/conf/app.ini"
     regexp: "{{ item.regexp }}"
     replace: "{{ item.replace }}"
   loop:
-    - { regexp: '^(DOMAIN\s*=\s*).*$', replace: '\g<1>{{ ansible_host }}' }
-    - { regexp: '^(SSH_DOMAIN\s*=\s*).*$', replace: '\g<1>{{ ansible_host }}' }
-    - { regexp: '^(ROOT_URL\s*=\s*).*$', replace: '\g<1>http://{{ ansible_host }}:{{ forgejo_http_port }}/' }
+    - { regexp: '^(DOMAIN\s*=\s*).*$', replace: '\g<1>{{ effective_domain }}' }
+    - { regexp: '^(SSH_DOMAIN\s*=\s*).*$', replace: '\g<1>{{ effective_domain }}' }
+    - { regexp: '^(ROOT_URL\s*=\s*).*$', replace: '\g<1>http://{{ effective_domain }}:{{ forgejo_http_port }}/' }
   failed_when: false
 
 - name: Restart Forgejo server after updating restored app.ini

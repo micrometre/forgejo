@@ -82,12 +82,12 @@ ansible/
 | Playbook | Description | Target Hosts |
 |---|---|---|
 | `playbooks/configure-kvm.yml` | Configures KVM/libvirt host, creates standalone VMs, checks status/overview, and manages snapshots | `localhost` |
-| `playbooks/provision-kvm.yml` | Launches KVM VM (`git-server`, `192.168.122.100`) and provisions Forgejo Git Server | `localhost` + `git_servers` |
-| `playbooks/provision-runner-kvm.yml` | Launches KVM Runner VM (`git-runner`, `192.168.122.101`) and registers with Forgejo | `localhost` + `git_servers` + `git_runners` |
-| `playbooks/site.yml` | Full end-to-end configuration (`git_servers` + `git_runners`) | `git_servers`, `git_runners` |
-| `playbooks/deploy-git-server.yml` | Fast update of application stack only (skips OS package steps) | `git_servers` |
+| `playbooks/deploy-git-server.yml` | Deploys/updates Forgejo Git Server on the host (`[git_servers]`) | `git_servers` (`local`) |
+| `playbooks/provision-runner-kvm.yml` | Launches KVM Runner VM (`git-runner`, `192.168.122.101`) and registers with Host Forgejo | `localhost` + `git_servers` + `git_runners` |
+| `playbooks/site.yml` | Full end-to-end configuration (`git_servers` on host + `git_runners` in KVM) | `git_servers`, `git_runners` |
 | `playbooks/deploy-runner.yml` | Enables Forgejo Actions and provisions/registers runners | `git_servers`, `git_runners` |
-| `playbooks/restore.yml` | Transfers and restores host backup archive to target server(s) | `git_servers` |
+| `playbooks/backup.yml` | Creates a full Forgejo + PostgreSQL backup archive in `~/forgejo-backups/` | `git_servers` |
+| `playbooks/restore.yml` | Restores a backup archive from `~/forgejo-backups/` onto target server(s) | `git_servers` |
 
 ---
 
@@ -98,18 +98,15 @@ ansible/
 make configure_virtualization
 make configure_vm_manager
 
-# 2. Launch a KVM Git Server VM ('git-server' at 192.168.122.100) and provision with Ansible
-make ansible-kvm-server
+# 2. Deploy Forgejo Git Server on the Host ('git-server')
+make ansible-server
 
-# 3. Launch a dedicated KVM Runner VM ('git-runner' at 192.168.122.101) and register with Forgejo
+# 3. Launch the dedicated KVM Runner VM ('git-runner' at 192.168.122.101) and register with Forgejo
 make ansible-kvm-runner
 
-# 4. Inspect KVM VMs and Snapshots
+# 4. Inspect KVM Runner VM and Snapshots
 make workspace
-make vm_status VM_NAME=git-server
-make snapshot VM_NAME=git-server SNAPSHOT_NAME=clean-state
-make snapshot_list VM_NAME=git-server
-
-# 5. View Remote KVM Management & SSH ProxyJump Connection Info
-make kvm_remote_info
+make vm_status VM_NAME=git-runner
+make snapshot VM_NAME=git-runner SNAPSHOT_NAME=clean-state
+make snapshot_list VM_NAME=git-runner
 ```

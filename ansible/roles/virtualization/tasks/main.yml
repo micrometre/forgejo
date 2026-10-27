@@ -1,0 +1,174 @@
+---
+# Main tasks for virtualization role (libvirt + KVM + Remote Access)
+
+- name: Check if CPU supports hardware virtualization (VT-x / AMD-V)
+  ansible.builtin.shell: egrep -c '(vmx|svm)' /proc/cpuinfo
+  register: virt_support
+  failed_when: false
+  changed_when: false
+  become: false
+
+- name: Display virtualization support status
+  ansible.builtin.debug:
+    msg: "CPU virtualization extensions found ({{ virt_support.stdout }} cores)"
+  when: virt_support.stdout | int > 0
+
+- name: Warning if hardware virtualization is not detected
+  ansible.builtin.debug:
+    msg: "WARNING: Hardware virtualization extensions (vmx/svm) not detected!"
+  when: virt_support.stdout | int == 0
+
+- name: Update apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Install KVM and libvirt virtualization packages
+  ansible.builtin.apt:
+    name: "{{ virtualization_packages }}"
+    state: present
+  become: true
+
+- name: Install Cockpit and Cockpit Machines for web-based remote VM management
+  ansible.builtin.apt:
+    name: "{{ cockpit_packages }}"
+    state: present
+  become: true
+  when: enable_cockpit | bool
+
+- name: Ensure libvirt and kvm groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - "{{ libvirt_group }}"
+    - "{{ kvm_group }}"
+  become: true
+
+- name: Add user '{{ libvirt_user }}' to libvirt and kvm groups for passwordless remote management
+  ansible.builtin.user:
+    name: "{{ libvirt_user }}"
+    groups:
+      - "{{ libvirt_group }}"
+      - "{{ kvm_group }}"
+    append: true
+  become: true
+
+- name: Configure libvirtd unix socket permissions for remote qemu+ssh management
+  ansible.builtin.lineinfile:
+    path: /etc/libvirt/libvirtd.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?unix_sock_group\s*=', line: 'unix_sock_group = "{{ libvirt_group }}"' }
+    - { regexp: '^#?unix_sock_rw_perms\s*=', line: 'unix_sock_rw_perms = "0770"' }
+    - { regexp: '^#?unix_sock_ro_perms\s*=', line: 'unix_sock_ro_perms = "0777"' }
+  become: true
+  notify: restart libvirtd
+  when: configure_remote_libvirt | bool
+
+- name: Start and enable libvirtd service
+  ansible.builtin.systemd:
+    name: "{{ libvirt_service_name }}"
+    state: started
+    enabled: true
+  become: true
+
+- name: Start and enable cockpit.socket for remote Web UI management (port 9090)
+  ansible.builtin.systemd:
+    name: cockpit.socket
+    state: started
+    enabled: true
+  become: true
+  when: enable_cockpit | bool
+
+- name: Create VM images directory
+  ansible.builtin.file:
+    path: "{{ vm_images_path }}"
+    state: directory
+    owner: root
+    group: "{{ libvirt_group }}"
+    mode: "0775"
+  become: true
+
+- name: Ensure IPv4 forwarding is enabled for VM network routing
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  become: true
+  when: enable_remote_vm_routing | bool
+
+- name: Check if default libvirt network exists
+  ansible.builtin.command: virsh -c qemu:///system net-info {{ default_network_name }}
+  register: net_info
+  failed_when: false
+  changed_when: false
+  become: true
+  when: enable_default_network | bool
+
+- name: Create default libvirt network configuration if missing
+  ansible.builtin.template:
+    src: default-network.xml.j2
+    dest: /tmp/default-network.xml
+    mode: "0644"
+  become: true
+  when:
+    - enable_default_network | bool
+    - net_info.rc != 0
+
+- name: Define default libvirt network
+  ansible.builtin.command: virsh -c qemu:///system net-define /tmp/default-network.xml
+  become: true
+  when:
+    - enable_default_network | bool
+    - net_info.rc != 0
+
+- name: Check if default libvirt network is active
+  ansible.builtin.shell: virsh -c qemu:///system net-info {{ default_network_name }} | awk '/Active:/ {print $2}'
+  register: net_active
+  changed_when: false
+  failed_when: false
+  become: true
+  when: enable_default_network | bool
+
+- name: Start default libvirt network
+  ansible.builtin.command: virsh -c qemu:///system net-start {{ default_network_name }}
+  become: true
+  when:
+    - enable_default_network | bool
+    - net_active.stdout | trim != 'yes'
+
+- name: Check if default libvirt network is set to autostart
+  ansible.builtin.shell: virsh -c qemu:///system net-info {{ default_network_name }} | awk '/Autostart:/ {print $2}'
+  register: net_autostart
+  changed_when: false
+  failed_when: false
+  become: true
+  when: enable_default_network | bool
+
+- name: Autostart default libvirt network
+  ansible.builtin.command: virsh -c qemu:///system net-autostart {{ default_network_name }}
+  become: true
+  when:
+    - enable_default_network | bool
+    - net_autostart.stdout | trim != 'yes'
+
+- name: Verify KVM kernel modules are loaded
+  ansible.builtin.shell: lsmod | grep kvm
+  register: kvm_modules
+  changed_when: false
+  failed_when: false
+  become: false
+
+- name: Display loaded KVM modules and remote access URLs
+  ansible.builtin.debug:
+    msg:
+      - "Loaded KVM modules: {{ kvm_modules.stdout_lines | default([]) }}"
+      - "Remote virt-manager / virsh URI: qemu+ssh://{{ libvirt_user }}@{{ ansible_default_ipv4.address | default('<HOST_IP>') }}/system"
+      - "Remote Cockpit Web UI (KVM):     https://{{ ansible_default_ipv4.address | default('<HOST_IP>') }}:9090"
+  when: kvm_modules.rc == 0

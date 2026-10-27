@@ -63,12 +63,38 @@
     cmd: "unzip -tq {{ target_restore_file }}"
   changed_when: false
 
+- name: Ensure restore helper script is present on target server
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../roles/git_server/files/restore-forgejo.sh"
+    dest: "{{ git_server_dir }}/scripts/restore-forgejo.sh"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
 - name: Execute restore on target server
   ansible.builtin.command:
-    cmd: "make restore FILE={{ target_restore_file }} CONFIRM=y"
+    cmd: "{{ git_server_dir }}/scripts/restore-forgejo.sh {{ target_restore_file }}"
     chdir: "{{ git_server_dir }}"
   become_user: "{{ deploy_user }}"
   register: restore_execution
+  changed_when: true
+
+- name: Update restored app.ini domain and root URL to match target server
+  ansible.builtin.replace:
+    path: "{{ git_server_dir }}/data/forgejo/gitea/conf/app.ini"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  loop:
+    - { regexp: '^(DOMAIN\s*=\s*).*$', replace: '\g<1>{{ ansible_host }}' }
+    - { regexp: '^(SSH_DOMAIN\s*=\s*).*$', replace: '\g<1>{{ ansible_host }}' }
+    - { regexp: '^(ROOT_URL\s*=\s*).*$', replace: '\g<1>http://{{ ansible_host }}:{{ forgejo_http_port }}/' }
+  failed_when: false
+
+- name: Restart Forgejo server after updating restored app.ini
+  ansible.builtin.command:
+    cmd: docker compose restart server
+    chdir: "{{ git_server_dir }}"
+  become_user: "{{ deploy_user }}"
   changed_when: true
 
 - name: Wait for Forgejo web interface to respond after restore

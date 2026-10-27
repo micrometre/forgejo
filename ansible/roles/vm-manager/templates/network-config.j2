@@ -1,0 +1,14 @@
+version: 2
+ethernets:
+  id0:
+    match:
+      name: "en*"
+    dhcp4: false
+    addresses:
+      - {{ vm_static_ip }}/24
+    gateway4: {{ vm_gateway }}
+    nameservers:
+      addresses:
+{% for dns in vm_dns %}
+        - {{ dns }}
+{% endfor %}

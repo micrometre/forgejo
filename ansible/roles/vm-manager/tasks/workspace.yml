@@ -1,0 +1,37 @@
+---
+# Workspace and shared image cache setup tasks for vm-manager role
+
+- name: Create shared cloud images cache directory
+  ansible.builtin.file:
+    path: "{{ shared_images_dir }}"
+    state: directory
+    owner: "{{ deploy_user | default('ubuntu') }}"
+    group: "{{ deploy_user | default('ubuntu') }}"
+    mode: "0755"
+  become: true
+  when: use_shared_images | bool
+
+- name: Create VM workspace directory
+  ansible.builtin.file:
+    path: "{{ work_directory }}"
+    state: directory
+    owner: "{{ deploy_user | default('ubuntu') }}"
+    group: "{{ deploy_user | default('ubuntu') }}"
+    mode: "0755"
+  become: true
+  when: use_work_directory | bool
+
+- name: Create VM workspace subdirectories
+  ansible.builtin.file:
+    path: "{{ work_directory }}/{{ item }}"
+    state: directory
+    owner: "{{ deploy_user | default('ubuntu') }}"
+    group: "{{ deploy_user | default('ubuntu') }}"
+    mode: "0755"
+  loop:
+    - configs
+    - logs
+    - scripts
+    - exports
+  become: true
+  when: use_work_directory | bool

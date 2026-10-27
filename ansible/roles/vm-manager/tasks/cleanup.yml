@@ -1,0 +1,60 @@
+---
+# Cleanup tasks for existing KVM VM
+
+- name: Check if VM exists in libvirt
+  ansible.builtin.command: virsh -c qemu:///system dominfo {{ vm_name }}
+  register: vm_check
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Stop VM if running
+  ansible.builtin.command: virsh -c qemu:///system destroy {{ vm_name }}
+  when: vm_check.rc == 0
+  failed_when: false
+  become: true
+
+- name: Delete all snapshots of VM before undefining
+  ansible.builtin.shell: |
+    for snap in $(virsh -c qemu:///system snapshot-list {{ vm_name }} --name 2>/dev/null); do
+      [ -n "$snap" ] && virsh -c qemu:///system snapshot-delete {{ vm_name }} "$snap" || true
+    done
+  when: vm_check.rc == 0
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Undefine VM from libvirt
+  ansible.builtin.command: virsh -c qemu:///system undefine {{ vm_name }} --nvram
+  when: vm_check.rc == 0
+  failed_when: false
+  become: true
+
+- name: Remove VM disk and cloud-init seed ISO
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ vm_disk_path }}"
+    - "{{ vm_seed_iso_path }}"
+    - "/tmp/cloud-init-{{ vm_name }}"
+  become: true
+
+- name: Remove VM from known_hosts
+  ansible.builtin.known_hosts:
+    name: "{{ vm_static_ip }}"
+    state: absent
+  failed_when: false
+  become: false
+
+- name: Remove VM specific inventory file
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../inventory/vm-{{ vm_name }}.yml"
+    state: absent
+  failed_when: false
+  become: false
+
+- name: Display cleanup completion
+  ansible.builtin.debug:
+    msg: "VM '{{ vm_name }}' has been completely removed."
+  when: vm_check.rc == 0

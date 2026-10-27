@@ -1,0 +1,81 @@
+---
+# =============================================================================
+# Turnkey Playbook: Launch KVM/Libvirt Runner VM & Provision with Ansible
+# =============================================================================
+# 1. Launches an Ubuntu 24.04 ('git-runner') KVM VM on localhost via cloud-init
+# 2. Persists runner IP into ansible/inventory/hosts.ini and ~/.ssh/config
+# 3. Ensures Forgejo Actions is enabled on the Forgejo Server VM
+# 4. Installs Docker + Forgejo Runner and registers it with Forgejo Server
+
+- name: Launch and Prepare KVM Runner VM
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+  vars:
+    runner_vm_name: "git-runner"
+    runner_vm_distro: "noble"
+    runner_vm_vcpus: 4
+    runner_vm_ram: 4096
+    runner_vm_disk_size: "60G"
+    runner_vm_ip: "192.168.122.101"
+
+  roles:
+    - role: vm-manager
+      vars:
+        vm_name: "{{ runner_vm_name }}"
+        vm_distro: "{{ runner_vm_distro }}"
+        vm_vcpus: "{{ runner_vm_vcpus }}"
+        vm_ram: "{{ runner_vm_ram }}"
+        vm_disk_size: "{{ runner_vm_disk_size }}"
+        vm_static_ip: "{{ runner_vm_ip }}"
+        inventory_group: "git_runners"
+        ssh_alias: "git.runner"
+      tags: [vm, create-vm]
+
+  post_tasks:
+    - name: Add KVM Runner VM to in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ runner_vm_name }}"
+        groups: git_runners
+        ansible_host: "{{ runner_vm_ip }}"
+        ansible_user: "{{ vm_user | default('ubuntu') }}"
+        ansible_ssh_private_key_file: "{{ vm_ssh_key_path | default('/home/' ~ (deploy_user | default('ubuntu')) ~ '/.ssh/id_rsa_vm') }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+- name: Ensure Forgejo Actions is Enabled on Git Server VM
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: git_server
+      tags: [git_server, app]
+
+- name: Provision Forgejo Actions Runner on KVM VM
+  hosts: git_runners
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: docker
+      tags: [docker]
+
+    - role: forgejo_runner
+      tags: [runner, forgejo_runner]
+
+  post_tasks:
+    - name: Display KVM Runner Summary
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Forgejo Actions KVM Runner VM Ready!"
+          - "  Runner VM:       {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  SSH Shortcut:    ssh git.runner"
+          - "  Forgejo Server:  {{ forgejo_instance_url }}"
+          - "  Runner Labels:   {{ forgejo_runner_labels | join(', ') }}"
+          - "================================================================="
+      tags: [always]

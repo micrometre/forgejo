@@ -1,0 +1,52 @@
+---
+# Check status of a specific KVM VM
+
+- name: Check if VM exists
+  ansible.builtin.command: virsh -c qemu:///system dominfo {{ vm_name }}
+  register: vm_dominfo
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Get VM state
+  ansible.builtin.command: virsh -c qemu:///system domstate {{ vm_name }}
+  register: vm_state
+  when: vm_dominfo.rc == 0
+  changed_when: false
+  become: true
+
+- name: Get VM VNC display port
+  ansible.builtin.command: virsh -c qemu:///system vncdisplay {{ vm_name }}
+  register: vm_vnc
+  when:
+    - vm_dominfo.rc == 0
+    - "'running' in vm_state.stdout"
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Test SSH connectivity to VM
+  ansible.builtin.wait_for:
+    host: "{{ vm_static_ip }}"
+    port: 22
+    timeout: 5
+  register: ssh_test
+  when:
+    - vm_dominfo.rc == 0
+    - "'running' in vm_state.stdout"
+  failed_when: false
+  become: false
+
+- name: Display VM status information
+  ansible.builtin.debug:
+    msg:
+      - "==========================================="
+      - "  KVM Virtual Machine Status: {{ vm_name }}"
+      - "==========================================="
+      - "Exists:      {{ 'Yes' if vm_dominfo.rc == 0 else 'No' }}"
+      - "State:       {{ vm_state.stdout | trim if vm_dominfo.rc == 0 else 'N/A' }}"
+      - "IP Address:  {{ vm_static_ip if vm_dominfo.rc == 0 else 'N/A' }}"
+      - "VNC Display: {{ vm_vnc.stdout | default('N/A') | trim if vm_dominfo.rc == 0 else 'N/A' }}"
+      - "SSH Ready:   {{ 'Yes' if (ssh_test is defined and ssh_test.failed is defined and not ssh_test.failed) else 'No' }}"
+      - "Connect:     ssh -i {{ vm_ssh_key_path }} {{ vm_user }}@{{ vm_static_ip }}"
+      - "==========================================="

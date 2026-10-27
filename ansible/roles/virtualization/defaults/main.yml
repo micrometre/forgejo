@@ -1,0 +1,61 @@
+---
+# Default variables for virtualization role (libvirt + KVM + Remote Management)
+
+# Packages to install for KVM/QEMU virtualization and remote management
+virtualization_packages:
+  - qemu-system-x86
+  - qemu-utils
+  - libvirt-daemon-system
+  - libvirt-clients
+  - bridge-utils
+  - virt-manager
+  - virtinst
+  - genisoimage
+  - netcat-openbsd
+  - ovmf
+  - swtpm
+
+# Optional web-based VM management UI (Cockpit + Cockpit Machines on https://<HOST_IP>:9090)
+enable_cockpit: true
+cockpit_packages:
+  - cockpit
+  - cockpit-machines
+
+# Libvirt configuration
+libvirt_service_name: libvirtd
+libvirt_group: libvirt
+kvm_group: kvm
+libvirt_user: "{{ deploy_user | default(ansible_user_id) | default('ubuntu') }}"
+
+# Remote management via qemu+ssh://<user>@<host>/system
+configure_remote_libvirt: true
+
+# Default network settings (virbr0 NAT network)
+default_network_name: default
+enable_default_network: true
+
+# VM storage paths
+vm_images_path: /var/lib/libvirt/images
+vm_storage_pool: default
+
+# Network bridge settings
+create_bridge: false
+bridge_name: br0
+bridge_interface: "{{ ansible_default_ipv4.interface | default('eth0') }}"
+
+# Virtual machine network settings (192.168.122.0/24)
+vm_network_subnet: "192.168.122.0/24"
+vm_network_gateway: "192.168.122.1"
+vm_network_netmask: "255.255.255.0"
+vm_dhcp_start: "192.168.122.2"
+vm_dhcp_end: "192.168.122.99"
+
+# Static DHCP reservations on virbr0 (optional, cloud-init also sets static IPs)
+vm_static_hosts:
+  - name: git-server
+    ip: 192.168.122.100
+  - name: git-runner
+    ip: 192.168.122.101
+
+# Enable IPv4 forwarding and libvirt subnet access from external hosts
+enable_remote_vm_routing: true

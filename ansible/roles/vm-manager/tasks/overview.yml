@@ -1,0 +1,38 @@
+---
+# Overview of all KVM VMs on the host
+
+- name: List all VMs in libvirt (qemu:///system)
+  ansible.builtin.command: virsh -c qemu:///system list --all
+  register: all_vms
+  changed_when: false
+  become: true
+
+- name: Get libvirt network leases on default network
+  ansible.builtin.command: virsh -c qemu:///system net-dhcp-leases default
+  register: dhcp_leases
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Check disk usage of libvirt images directory
+  ansible.builtin.shell: ls -lh {{ vm_images_dir }}/*.img 2>/dev/null || echo "No .img disks found"
+  register: disk_usage
+  changed_when: false
+  become: true
+
+- name: Display KVM Virtual Machines Overview
+  ansible.builtin.debug:
+    msg:
+      - "================================================================="
+      - "  KVM / Libvirt Virtual Machines Overview (qemu:///system)"
+      - "================================================================="
+      - "{{ all_vms.stdout_lines }}"
+      - "-----------------------------------------------------------------"
+      - "  Disk Images ({{ vm_images_dir }}):"
+      - "{{ disk_usage.stdout_lines }}"
+      - "-----------------------------------------------------------------"
+      - "  Remote Management:"
+      - "    virt-manager: virt-manager -c 'qemu+ssh://{{ deploy_user | default('ubuntu') }}@{{ ansible_default_ipv4.address | default('<HOST_IP>') }}/system'"
+      - "    virsh CLI:    virsh -c 'qemu+ssh://{{ deploy_user | default('ubuntu') }}@{{ ansible_default_ipv4.address | default('<HOST_IP>') }}/system' list --all"
+      - "    Cockpit UI:   https://{{ ansible_default_ipv4.address | default('<HOST_IP>') }}:9090"
+      - "================================================================="

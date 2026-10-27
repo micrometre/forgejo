@@ -1,0 +1,70 @@
+---
+# =============================================================================
+# Playbook: Create Forgejo Backup on Target Server & Fetch to Control Host
+# =============================================================================
+# Usage:
+#   make backup
+#   make ansible-backup
+
+- name: Create Forgejo Backup and Fetch to Host
+  hosts: git_servers
+  become: true
+  gather_facts: true
+  vars:
+    host_backup_dir: "{{ lookup('env', 'HOME') }}/forgejo-backups"
+
+  tasks:
+    - name: Ensure backup directory exists on target server
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Create Forgejo dump and native PostgreSQL dump on target server
+      ansible.builtin.shell: |
+        set -euo pipefail
+        DUMP_NAME="forgejo-dump-$(date +%Y%m%d_%H%M%S).zip"
+        DUMP_FILE="{{ backup_dir }}/${DUMP_NAME}"
+        docker compose exec -T --user git server forgejo dump -c /data/gitea/conf/app.ini -f /tmp/forgejo-dump.zip >/dev/null
+        docker compose cp server:/tmp/forgejo-dump.zip "${DUMP_FILE}" >/dev/null
+        docker compose exec -T server rm -f /tmp/forgejo-dump.zip
+        TMP_DIR="$(mktemp -d)"
+        docker compose exec -T db pg_dump -U {{ postgres_user }} {{ postgres_db }} > "${TMP_DIR}/forgejo-postgres.sql"
+        zip -j -u -q "${DUMP_FILE}" "${TMP_DIR}/forgejo-postgres.sql"
+        rm -rf "${TMP_DIR}"
+        echo "${DUMP_FILE}"
+      args:
+        chdir: "{{ git_server_dir }}"
+        executable: /bin/bash
+      become_user: "{{ deploy_user }}"
+      register: remote_backup_res
+      changed_when: true
+
+    - name: Set remote backup path fact
+      ansible.builtin.set_fact:
+        remote_backup_file: "{{ remote_backup_res.stdout_lines | last | trim }}"
+
+    - name: Ensure host backup directory exists on Ansible controller
+      ansible.builtin.file:
+        path: "{{ host_backup_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+
+    - name: Fetch backup archive from target server to host ({{ host_backup_dir }})
+      ansible.builtin.fetch:
+        src: "{{ remote_backup_file }}"
+        dest: "{{ host_backup_dir }}/"
+        flat: true
+
+    - name: Display backup summary
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Forgejo Backup Completed!"
+          - "  Source Server:    {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  Saved on Host:    {{ host_backup_dir }}/{{ remote_backup_file | basename }}"
+          - "================================================================="

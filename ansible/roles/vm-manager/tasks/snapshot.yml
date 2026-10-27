@@ -1,0 +1,139 @@
+---
+# Snapshot management tasks for KVM VMs (create, list, revert, delete, clone)
+
+- name: Verify VM exists before snapshot operation
+  ansible.builtin.command: virsh -c qemu:///system dominfo {{ vm_name }}
+  register: snap_vm_check
+  failed_when: snap_vm_check.rc != 0
+  changed_when: false
+  become: true
+
+- name: Generate default snapshot name if not provided
+  ansible.builtin.set_fact:
+    snapshot_name: "{{ snapshot_name | default(vm_name ~ '-snap-' ~ (ansible_date_time.iso8601_basic_short | default('manual'))) }}"
+  when: vm_action == 'snapshot_create'
+
+# ============================================
+# Action: snapshot_create
+# ============================================
+- name: Create VM snapshot
+  when: vm_action == 'snapshot_create'
+  block:
+    - name: Create snapshot via virsh snapshot-create-as
+      ansible.builtin.command: >
+        virsh -c qemu:///system snapshot-create-as
+        --domain {{ vm_name }}
+        --name "{{ snapshot_name }}"
+        --description "{{ snapshot_description | default('Snapshot created by Ansible on ' ~ (ansible_date_time.iso8601 | default('now'))) }}"
+      register: snap_create_res
+      become: true
+
+    - name: Display created snapshot info
+      ansible.builtin.debug:
+        msg:
+          - "Snapshot '{{ snapshot_name }}' created for VM '{{ vm_name }}'"
+          - "{{ snap_create_res.stdout }}"
+
+# ============================================
+# Action: snapshot_list
+# ============================================
+- name: List VM snapshots
+  when: vm_action == 'snapshot_list'
+  block:
+    - name: List snapshots for VM
+      ansible.builtin.command: virsh -c qemu:///system snapshot-list {{ vm_name }} --tree
+      register: snap_list_tree
+      changed_when: false
+      become: true
+
+    - name: Get detailed snapshot list
+      ansible.builtin.command: virsh -c qemu:///system snapshot-list {{ vm_name }}
+      register: snap_list_details
+      changed_when: false
+      become: true
+
+    - name: Display snapshots for VM
+      ansible.builtin.debug:
+        msg:
+          - "Snapshots for VM '{{ vm_name }}':"
+          - "{{ snap_list_details.stdout_lines }}"
+
+# ============================================
+# Action: snapshot_revert
+# ============================================
+- name: Revert VM to snapshot
+  when: vm_action == 'snapshot_revert'
+  block:
+    - name: Ensure snapshot_name is specified for revert
+      ansible.builtin.fail:
+        msg: "Please provide snapshot_name (e.g., make snapshot-revert VM_NAME={{ vm_name }} SNAPSHOT_NAME=<name>)"
+      when: snapshot_name is not defined or snapshot_name == ''
+
+    - name: Revert VM to snapshot
+      ansible.builtin.command: >
+        virsh -c qemu:///system snapshot-revert {{ vm_name }} "{{ snapshot_name }}" --running
+      register: snap_revert_res
+      become: true
+
+    - name: Display revert result
+      ansible.builtin.debug:
+        msg: "VM '{{ vm_name }}' reverted to snapshot '{{ snapshot_name }}'."
+
+# ============================================
+# Action: snapshot_delete
+# ============================================
+- name: Delete VM snapshot
+  when: vm_action == 'snapshot_delete'
+  block:
+    - name: Ensure snapshot_name is specified for delete
+      ansible.builtin.fail:
+        msg: "Please provide snapshot_name (e.g., make snapshot-delete VM_NAME={{ vm_name }} SNAPSHOT_NAME=<name>)"
+      when: snapshot_name is not defined or snapshot_name == ''
+
+    - name: Delete snapshot
+      ansible.builtin.command: >
+        virsh -c qemu:///system snapshot-delete {{ vm_name }} "{{ snapshot_name }}"
+      register: snap_delete_res
+      become: true
+
+    - name: Display delete result
+      ansible.builtin.debug:
+        msg: "Snapshot '{{ snapshot_name }}' deleted from VM '{{ vm_name }}'."
+
+# ============================================
+# Action: snapshot_clone
+# ============================================
+- name: Clone VM from snapshot
+  when: vm_action == 'snapshot_clone'
+  vars:
+    target_clone_name: "{{ new_vm_name | default(clone_name | default('')) }}"
+  block:
+    - name: Ensure snapshot_name and NEW_VM_NAME are specified
+      ansible.builtin.fail:
+        msg: "Please provide SNAPSHOT_NAME and NEW_VM_NAME (e.g., make snapshot_clone VM_NAME={{ vm_name }} SNAPSHOT_NAME=<snap> NEW_VM_NAME=<new_vm>)"
+      when: >
+        snapshot_name is not defined or snapshot_name == '' or
+        target_clone_name == ''
+
+    - name: Extract disk image from snapshot into new qcow2 disk
+      ansible.builtin.command: >
+        /usr/bin/qemu-img convert -f qcow2 -O qcow2 -s "{{ snapshot_name }}"
+        "{{ vm_disk_path }}" "{{ vm_images_dir }}/{{ target_clone_name }}.img"
+      become: true
+
+    - name: Clone VM definition using virt-clone
+      ansible.builtin.command: >
+        virt-clone --connect qemu:///system
+        --original {{ vm_name }}
+        --name {{ target_clone_name }}
+        --file "{{ vm_images_dir }}/{{ target_clone_name }}.img"
+        --preserve-data
+      become: true
+
+    - name: Start cloned VM
+      ansible.builtin.command: virsh -c qemu:///system start {{ target_clone_name }}
+      become: true
+
+    - name: Display clone result
+      ansible.builtin.debug:
+        msg: "Cloned VM '{{ target_clone_name }}' from '{{ vm_name }}' snapshot '{{ snapshot_name }}'."

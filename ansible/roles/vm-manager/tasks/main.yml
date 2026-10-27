@@ -1,0 +1,300 @@
+---
+# Main tasks for vm-manager role (KVM / Libvirt VM lifecycle & cloud-init)
+
+- name: Set up shared images and workspace directories
+  ansible.builtin.include_tasks: workspace.yml
+  when: (use_shared_images | bool) or (use_work_directory | bool)
+
+- name: Clean up existing VM if requested
+  ansible.builtin.include_tasks: cleanup.yml
+  when: vm_cleanup | bool
+
+- name: Check VM status if requested
+  ansible.builtin.include_tasks: status.yml
+  when: vm_action == 'status'
+
+- name: Show all VMs overview if requested
+  ansible.builtin.include_tasks: overview.yml
+  when: vm_action == 'overview'
+
+- name: Perform snapshot operation if requested
+  ansible.builtin.include_tasks: snapshot.yml
+  when: vm_action in ['snapshot_create', 'snapshot_list', 'snapshot_revert', 'snapshot_delete', 'snapshot_clone']
+
+- name: Create or ensure KVM VM is running
+  when:
+    - vm_action == 'create'
+    - not (vm_cleanup | bool)
+  block:
+    - name: Ensure ~/.ssh directory exists for '{{ deploy_user | default("ubuntu") }}'
+      ansible.builtin.file:
+        path: "/home/{{ deploy_user | default('ubuntu') }}/.ssh"
+        state: directory
+        owner: "{{ deploy_user | default('ubuntu') }}"
+        group: "{{ deploy_user | default('ubuntu') }}"
+        mode: "0700"
+      become: false
+
+    - name: Check if VM SSH key exists
+      ansible.builtin.stat:
+        path: "{{ vm_ssh_key_path }}"
+      register: ssh_key_stat
+      become: false
+
+    - name: Generate SSH key pair for VM access if missing
+      ansible.builtin.command: >
+        ssh-keygen -t rsa -b 4096 -f {{ vm_ssh_key_path }} -N "" -C "ansible-kvm-key"
+      when: not ssh_key_stat.stat.exists
+      become: false
+
+    - name: Gather all host SSH public keys from ~/.ssh/*.pub
+      ansible.builtin.shell: cat /home/{{ deploy_user | default('ubuntu') }}/.ssh/*.pub 2>/dev/null | sort -u
+      register: host_pub_keys_raw
+      changed_when: false
+      become: false
+
+    - name: Set authorized keys list fact for cloud-init
+      ansible.builtin.set_fact:
+        vm_authorized_keys_list: "{{ host_pub_keys_raw.stdout_lines | select('match', '^ssh-|^ecdsa-') | list }}"
+
+    - name: Check if VM already exists in libvirt
+      ansible.builtin.command: virsh -c qemu:///system dominfo {{ vm_name }}
+      register: existing_vm
+      failed_when: false
+      changed_when: false
+      become: true
+
+    - name: Provision new KVM VM if not yet defined
+      when: existing_vm.rc != 0
+      block:
+        - name: Check if base cloud image exists in shared directory
+          ansible.builtin.stat:
+            path: "{{ shared_images_dir }}/{{ vm_base_image }}"
+          register: shared_base_image_stat
+          when: use_shared_images | bool
+
+        - name: Check if base cloud image exists in libvirt images directory
+          ansible.builtin.stat:
+            path: "{{ vm_images_dir }}/{{ vm_base_image }}"
+          register: libvirt_base_image_stat
+
+        - name: Download cloud image ({{ cloud_images[vm_distro].name }}) to shared cache
+          ansible.builtin.get_url:
+            url: "{{ vm_image_url }}"
+            dest: "{{ shared_images_dir }}/{{ vm_base_image }}"
+            mode: "0644"
+            timeout: 600
+          become: false
+          when:
+            - use_shared_images | bool
+            - not shared_base_image_stat.stat.exists
+            - not libvirt_base_image_stat.stat.exists
+
+        - name: Copy base image from shared cache to libvirt directory
+          ansible.builtin.copy:
+            src: "{{ shared_images_dir }}/{{ vm_base_image }}"
+            dest: "{{ vm_images_dir }}/{{ vm_base_image }}"
+            remote_src: true
+            owner: root
+            group: libvirt
+            mode: "0644"
+          become: true
+          when:
+            - use_shared_images | bool
+            - not libvirt_base_image_stat.stat.exists
+
+        - name: Download cloud image directly to libvirt directory if shared cache disabled
+          ansible.builtin.get_url:
+            url: "{{ vm_image_url }}"
+            dest: "{{ vm_images_dir }}/{{ vm_base_image }}"
+            mode: "0644"
+            timeout: 600
+          become: true
+          when:
+            - not (use_shared_images | bool)
+            - not libvirt_base_image_stat.stat.exists
+
+        - name: Create VM qcow2 disk overlay from base cloud image
+          ansible.builtin.command: >
+            /usr/bin/qemu-img create -b {{ vm_images_dir }}/{{ vm_base_image }}
+            -f qcow2 -F qcow2 {{ vm_disk_path }} {{ vm_disk_size }}
+          args:
+            creates: "{{ vm_disk_path }}"
+          become: true
+
+        - name: Create temporary directory for cloud-init files
+          ansible.builtin.file:
+            path: "/tmp/cloud-init-{{ vm_name }}"
+            state: directory
+            mode: "0755"
+          become: true
+
+        - name: Generate cloud-init user-data
+          ansible.builtin.template:
+            src: user-data.j2
+            dest: "/tmp/cloud-init-{{ vm_name }}/user-data"
+            mode: "0644"
+          become: true
+
+        - name: Generate cloud-init meta-data
+          ansible.builtin.template:
+            src: meta-data.j2
+            dest: "/tmp/cloud-init-{{ vm_name }}/meta-data"
+            mode: "0644"
+          become: true
+
+        - name: Generate cloud-init network-config
+          ansible.builtin.template:
+            src: network-config.j2
+            dest: "/tmp/cloud-init-{{ vm_name }}/network-config"
+            mode: "0644"
+          become: true
+
+        - name: Save cloud-init configs to workspace directory
+          ansible.builtin.copy:
+            src: "/tmp/cloud-init-{{ vm_name }}/{{ item }}"
+            dest: "{{ work_directory }}/configs/{{ vm_name }}-{{ item }}"
+            remote_src: true
+            owner: "{{ deploy_user | default('ubuntu') }}"
+            group: "{{ deploy_user | default('ubuntu') }}"
+            mode: "0644"
+          loop:
+            - user-data
+            - meta-data
+            - network-config
+          become: true
+          when: use_work_directory | bool
+
+        - name: Create cloud-init seed ISO image
+          ansible.builtin.command: >
+            genisoimage -output {{ vm_seed_iso_path }}
+            -volid cidata -joliet -rock
+            /tmp/cloud-init-{{ vm_name }}/user-data
+            /tmp/cloud-init-{{ vm_name }}/meta-data
+            /tmp/cloud-init-{{ vm_name }}/network-config
+          args:
+            creates: "{{ vm_seed_iso_path }}"
+          become: true
+
+        - name: Define and launch VM with virt-install
+          ansible.builtin.command: >
+            virt-install
+            --connect qemu:///system
+            --name {{ vm_name }}
+            --memory {{ vm_ram }}
+            --vcpus {{ vm_vcpus }}
+            --disk path={{ vm_disk_path }},format=qcow2,bus=virtio
+            --disk path={{ vm_seed_iso_path }},device=cdrom
+            --os-variant {{ vm_os_variant }}
+            --network {{ vm_network }}
+            --graphics {{ vm_graphics }}
+            --console {{ vm_console }}
+            --import
+            --noautoconsole
+          become: true
+
+        - name: Clean up temporary cloud-init directory
+          ansible.builtin.file:
+            path: "/tmp/cloud-init-{{ vm_name }}"
+            state: absent
+          become: true
+
+    - name: Check current VM state if already defined
+      ansible.builtin.command: virsh -c qemu:///system domstate {{ vm_name }}
+      register: current_vm_state
+      changed_when: false
+      become: true
+
+    - name: Start VM if not running
+      ansible.builtin.command: virsh -c qemu:///system start {{ vm_name }}
+      when: "'running' not in current_vm_state.stdout"
+      become: true
+
+    - name: Configure VM autostart on host boot
+      ansible.builtin.command: virsh -c qemu:///system autostart {{ vm_name }}
+      when: vm_autostart | bool
+      changed_when: false
+      become: true
+
+    - name: Wait for SSH to become available on VM ({{ vm_static_ip }}:22)
+      ansible.builtin.wait_for:
+        host: "{{ vm_static_ip }}"
+        port: 22
+        delay: 5
+        timeout: "{{ vm_ssh_timeout }}"
+        state: started
+      when: vm_wait_for_ssh | bool
+      become: false
+
+    - name: Remove stale host key from known_hosts
+      ansible.builtin.known_hosts:
+        name: "{{ vm_static_ip }}"
+        state: absent
+      failed_when: false
+      become: false
+
+    - name: Scan and add VM SSH host key to known_hosts
+      ansible.builtin.shell: >
+        ssh-keyscan -H {{ vm_static_ip }} >> /home/{{ deploy_user | default('ubuntu') }}/.ssh/known_hosts 2>/dev/null
+      changed_when: false
+      failed_when: false
+      become: false
+
+    - name: Create VM-specific inventory file (ansible/inventory/vm-{{ vm_name }}.yml)
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../inventory/vm-{{ vm_name }}.yml"
+        mode: "0644"
+        content: |
+          all:
+            children:
+              vms:
+                hosts:
+                  {{ vm_name }}:
+                    ansible_host: {{ vm_static_ip }}
+                    ansible_user: {{ vm_user }}
+                    ansible_ssh_private_key_file: {{ vm_ssh_key_path }}
+                    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+                    vm_distro: {{ vm_distro }}
+                    vm_ram: {{ vm_ram }}
+                    vm_vcpus: {{ vm_vcpus }}
+                    vm_disk_size: {{ vm_disk_size }}
+      become: false
+
+    - name: Update ansible/inventory/hosts.ini when inventory_group is set
+      ansible.builtin.lineinfile:
+        path: "{{ playbook_dir }}/../inventory/hosts.ini"
+        insertafter: '^\[{{ inventory_group }}\]'
+        regexp: '^{{ vm_name }}\s+'
+        line: "{{ vm_name }} ansible_host={{ vm_static_ip }} ansible_user={{ vm_user }}"
+        state: present
+      when: inventory_group | length > 0
+      become: false
+
+    - name: Add SSH shortcut entry to ~/.ssh/config
+      ansible.builtin.blockinfile:
+        path: "/home/{{ deploy_user | default('ubuntu') }}/.ssh/config"
+        create: true
+        mode: "0600"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK: {{ ssh_alias | default(vm_name) }}"
+        block: |
+          Host {{ ssh_alias | default(vm_name) }}
+              HostName {{ vm_static_ip }}
+              Port {{ ssh_alias_port | default(22) }}
+              User {{ ssh_alias_user | default(vm_user) }}
+              IdentityFile {{ vm_ssh_key_path }}
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+      become: false
+
+    - name: Display VM connection information
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  KVM Virtual Machine Ready!"
+          - "  Name:          {{ vm_name }}"
+          - "  Distribution:  {{ cloud_images[vm_distro].name }}"
+          - "  IP Address:    {{ vm_static_ip }}"
+          - "  Resources:     {{ vm_vcpus }} vCPUs, {{ vm_ram }} MB RAM, {{ vm_disk_size }} Disk"
+          - "  SSH Command:   ssh -i {{ vm_ssh_key_path }} {{ vm_user }}@{{ vm_static_ip }}"
+          - "  SSH Shortcut:  ssh {{ ssh_alias | default(vm_name) }}"
+          - "================================================================="

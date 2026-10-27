@@ -1,581 +1,199 @@
-# Forgejo Git Server
+# Forgejo Git Server & Runner (Ansible + KVM / Libvirt)
 
-A self-hosted [Forgejo](https://forgejo.org/) Git server running on Docker Compose with PostgreSQL. A `Makefile` handles the day-to-day work: starting and stopping, managing users, backups, restores and offsite copies to Google Drive.
+A self-hosted [Forgejo](https://forgejo.org/) Git server and [Forgejo Actions](https://forgejo.org/docs/latest/user/actions/) CI/CD runner infrastructure managed entirely as **Infrastructure as Code (Ansible)** on **libvirt + KVM** virtual machines (modeled after [`micrometre/ansible-kvm`](https://github.com/micrometre/ansible-kvm)).
 
-Based on the official [Forgejo Docker installation guide](https://forgejo.org/docs/latest/admin/installation/docker/).
-
-
-
-
-| | |
-|---|---|
-| **Web UI** | <http://localhost:3000> |
-| **SSH clone** | `ssh://git@localhost:222/<owner>/<repo>.git` |
-| **Stack** | Forgejo 16 + PostgreSQL 16 (Alpine) |
-| **Data** | `./data/` (bind mounts) |
-| **Backups** | `~/forgejo-backups/` (optionally copied to Google Drive) |
+| Resource | VM Name | Static IP (`virbr0`) | SSH Shortcut | Details |
+|---|---|---|---|---|
+| **Git Server** | `git-server` | `192.168.122.100` | `ssh git-server` / `ssh git.server` | Forgejo 16 + PostgreSQL 16 (`http://192.168.122.100:3000`, Git SSH `git@git.vm` port `222`) |
+| **Actions Runner** | `git-runner` | `192.168.122.101` | `ssh git.runner` | Forgejo Runner `v13.2.0` + Docker + Buildx + Node.js/dpkg |
+| **Backups** | Host & GDrive | `~/forgejo-backups/` | — | Automated via Ansible (`make backup` / `make restore`) + `rclone` offsite sync |
 
 ---
 
 ## Contents
 
-- [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
-- [Configuration](#configuration)
+- [KVM / Libvirt VM & Snapshot Management](#kvm--libvirt-vm--snapshot-management)
+- [Accessing & Managing VMs from Another Host](#accessing--managing-vms-from-another-host)
+- [GitHub Actions & Forgejo Runner (`git-runner`)](#github-actions--forgejo-runner-git-runner)
 - [Working with Repositories](#working-with-repositories)
-- [Backup & Restore](#backup--restore)
+- [Backup, Verification & Restore](#backup-verification--restore)
 - [Offsite Backups (Google Drive)](#offsite-backups-google-drive)
-- [Upgrading Forgejo](#upgrading-forgejo)
-- [Security Checklist](#security-checklist)
-- [Troubleshooting](#troubleshooting)
 - [Project Layout](#project-layout)
-
----
-
-## Prerequisites
-
-- Docker Engine with the Compose v2 plugin (`docker compose version`)
-- `make`, `zip`, `unzip`
-- `rclone`, only needed for [offsite backups](#offsite-backups-google-drive)
-- Your host user should be UID/GID `1000`. Check with `id`. If yours differs, change `USER_UID`/`USER_GID` in `.env`.
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Start Forgejo + PostgreSQL (creates .env and ./data on first run)
-make up
+# 1. Configure KVM/libvirt virtualization and remote access (Cockpit + qemu+ssh) on host
+make configure_virtualization
+make configure_vm_manager
 
-# 2. Create your admin account
-make create-admin ADMIN_USER=ubuntu ADMIN_PASS='choose-a-strong-password' ADMIN_EMAIL=you@example.com
+# 2. Launch the 'git-server' KVM VM (192.168.122.100) and provision Forgejo + PostgreSQL
+make ansible-kvm-server
 
-# 3. Open the web UI and sign in
-xdg-open http://localhost:3000
+# 3. Launch the 'git-runner' KVM VM (192.168.122.101) and register Forgejo Actions Runner
+make ansible-kvm-runner
+
+# 4. Open the Forgejo Web UI
+xdg-open http://192.168.122.100:3000
 ```
 
-> [!NOTE]
-> `FORGEJO__security__INSTALL_LOCK=true` is set in `docker-compose.yml`, so the web install wizard is skipped and the instance is ready right away. You must create the first admin from the CLI as shown above.
-
-> [!IMPORTANT]
-> `admin` is a **reserved username** in Forgejo (it clashes with the `/admin` route), so pick a different name.
-
-If you leave out the arguments, `make create-admin` uses `ubuntu` / `admin-1234` / `admin@example.local`. Only use those defaults for local testing.
+All settings (versions, ports, credentials, runner labels) are centrally managed in [`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml).
 
 ---
 
 ## Command Reference
 
-Run `make` or `make help` to list every target.
+Run `make` or `make help` to list all available targets.
 
-### Lifecycle
-
-| Command | Description |
-|---|---|
-| `make up` | Start all services in the background |
-| `make down` | Stop and remove containers (keeps your data) |
-| `make restart` | Restart all services |
-| `make status` / `make ps` | Show container status and health |
-| `make pull` | Pull newer images (then run `make up` to apply them) |
-| `make shell` | Open a shell inside the Forgejo container |
-
-### Logs
+### KVM / Libvirt Setup & VM Lifecycle (`make/setup.mk`, `make/vm.mk`, `make/snapshot.mk`)
 
 | Command | Description |
 |---|---|
-| `make logs` | Follow logs from all services |
-| `make logs-server` | Follow Forgejo logs |
-| `make logs-db` | Follow PostgreSQL logs |
+| `make configure_virtualization` | Install and configure KVM, libvirt, Cockpit Web UI (`:9090`), and remote `qemu+ssh` access |
+| `make configure_vm_manager` | Configure KVM VM manager workspace (`~/vm-workspace`) and cloud image cache (`~/vm-images`) |
+| `make create_vm [VM_NAME=…]` | Create a standalone KVM VM (default `git-server` at `192.168.122.100`) |
+| `make vm_status [VM_NAME=…]` | Show detailed status, IP, VNC port, and SSH readiness for a KVM VM |
+| `make workspace` | Show KVM VMs overview (`qemu:///system`), disk images, and remote management URLs |
+| `make clean_vm [VM_NAME=…]` | Destroy and remove a specific KVM VM and its disk image |
+| `make clean_all` | Remove cached VM cloud images and workspace directories (`~/vm-workspace`, `~/vm-images`) |
+| `make snapshot` / `make snapshot_create` | Create a snapshot of `VM_NAME` (optional `SNAPSHOT_NAME=…`, `SNAPSHOT_DESC=…`) |
+| `make snapshot_list` | List all snapshots for `VM_NAME` |
+| `make snapshot_revert SNAPSHOT_NAME=…` | Revert `VM_NAME` to a snapshot |
+| `make snapshot_delete SNAPSHOT_NAME=…` | Delete a snapshot from `VM_NAME` |
+| `make snapshot_clone SNAPSHOT_NAME=… NEW_VM_NAME=…` | Clone a new KVM VM from an existing snapshot |
+| `make kvm_remote_info` | Display connection commands to access & manage KVM VMs from another host |
+| `make kvm_port_forward [ACTION=enable\|disable]` | Enable/disable host-to-VM port forwarding (`:3000` & `:222`) for LAN access |
 
-### Users
-
-| Command | Description |
-|---|---|
-| `make create-admin ADMIN_USER=… ADMIN_PASS=… ADMIN_EMAIL=…` | Create an administrator |
-| `make reset-password USER=… PASS=…` | Reset a user's password and clear the "must change password" flag |
-
-### Data
-
-| Command | Description |
-|---|---|
-| `make backup` | Write a full backup to `$BACKUP_DIR` |
-| `make backup-branches [ARGS=…]` | Run `backup_branches.sh` across all repositories in `~/repos` |
-| `make check-backup [FILE=…]` | Verify archive integrity and check repository/database completeness |
-| `make restore [FILE=…]` | Restore from the newest backup, or from `FILE` |
-| `make backup-gdrive [ARGS=--new]` | Upload the newest backup to Google Drive |
-| `make clean` | **Destructive.** Remove containers and `./data` (asks for confirmation; backups are kept) |
-
-### Testing & VM (Multipass)
+### Ansible Provisioning (`make/ansible.mk`)
 
 | Command | Description |
 |---|---|
-| `make provision-vm [VM_NAME=…]` | Launch and provision a fresh Multipass VM with Git server running |
-| `make vm-restore [FILE=…]` | Provision VM and test-restore a backup archive |
-| `make vm-status` | List running Multipass VMs |
-| `make vm-shell` | Shell into the test VM |
-| `make vm-clean` | Stop and delete the test VM |
-
-### Infrastructure as Code (Ansible)
-
-| Command | Description |
-|---|---|
-| `make ansible-ping` | Test SSH connectivity to all inventory servers |
-| `make ansible-deploy` | Run end-to-end site playbook on inventory hosts (`common` + `docker` + `git_server` + `forgejo_runner`) |
-| `make ansible-app` | Fast deployment/update of Git server stack only (skips OS packages) |
-| `make ansible-restore [FILE=…]` | Transfer and restore host backup archive onto inventory servers |
-| `make ansible-vm` | Launch Multipass VM and provision completely with Ansible |
-| `make ansible-runner-vm` | Launch Multipass Runner VM (`git-runner`) and register it with Forgejo via Ansible |
+| `make ansible-ping` | Test SSH connectivity to all inventory servers (`git-server`, `git-runner`) |
+| `make ansible-kvm-server` | Create KVM VM (`git-server`, `192.168.122.100`) and provision Forgejo Git Server with Ansible |
+| `make ansible-kvm-runner` | Create KVM Runner VM (`git-runner`, `192.168.122.101`) and register it with Forgejo via Ansible |
+| `make ansible-deploy` | Run full Ansible site playbook across `[git_servers]` and `[git_runners]` |
+| `make ansible-app` | Fast deployment/update of Git Server application stack only (skips OS packages) |
 | `make ansible-runner` | Provision and register Forgejo Actions Runner on `[git_runners]` inventory hosts |
+| `make ansible-backup` | Create a full Forgejo + PostgreSQL backup on `[git_servers]` and download to `~/forgejo-backups` |
+| `make ansible-restore [FILE=…]` | Transfer and restore a host backup archive onto `[git_servers]` |
 
-*See [`ansible/README.md`](ansible/README.md) for role details, inventory configuration, and playbooks.*
+### Backups & Repository Sync (`make/backup.mk`)
 
----
-
-## Configuration
-
-All settings live in `.env`, which is created from `.env.example` on first run and kept out of git.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `FORGEJO_VERSION` | `16` | Forgejo image tag |
-| `FORGEJO_HTTP_PORT` | `3000` | Host port for the web UI |
-| `FORGEJO_SSH_PORT` | `222` | Host port for Git over SSH (also used in clone URLs) |
-| `USER_UID` / `USER_GID` | `1000` | Owner of files in `./data/forgejo` |
-| `FORGEJO_DOMAIN` | `localhost` | Hostname used in clone URLs |
-| `FORGEJO_ROOT_URL` | `http://localhost:3000/` | Public base URL |
-| `POSTGRES_VERSION` | `16-alpine` | PostgreSQL image tag |
-| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `forgejo` | Database credentials |
-| `BACKUP_DIR` | `/home/ubuntu/forgejo-backups` | Where backups are written and read |
-| `RCLONE_REMOTE` | `gdrive:Forgejo-Backups` | rclone destination for offsite backups |
-
-Run `make up` after editing `.env` so the containers pick up the changes.
-
-### Changing other Forgejo settings
-
-You can set any [`app.ini` option](https://forgejo.org/docs/latest/admin/config-cheat-sheet/) as an environment variable named `FORGEJO__<SECTION>__<KEY>`. Add it under `server.environment` in `docker-compose.yml`:
-
-```yaml
-- FORGEJO__service__DISABLE_REGISTRATION=true   # stop public sign-ups
-- FORGEJO__service__REQUIRE_SIGNIN_VIEW=true    # hide everything from anonymous users
-- FORGEJO____APP_NAME=My Company Git            # keys in the top-level section use an empty section name
-```
-
----
-
-## Working with Repositories
-
-### Cloning
-
-```bash
-# SSH (add your public key under User Settings → SSH / GPG Keys first)
-git clone ssh://git@localhost:222/ubuntu/my-repo.git
-
-# HTTP
-git clone http://localhost:3000/ubuntu/my-repo.git
-```
-
-To avoid typing the port each time, add this to `~/.ssh/config`:
-
-```sshconfig
-Host forgejo
-    HostName localhost
-    Port 222
-    User git
-```
-
-Then clone with `git clone forgejo:ubuntu/my-repo.git`. *(If testing in a Multipass VM, see [Multipass SSH Configuration](#ssh-configuration-sshconfig)).*
-
-### Pushing an existing project
-
-```bash
-cd ~/repos/my-project
-git remote add forgejo ssh://git@localhost:222/ubuntu/my-project.git
-git push -u forgejo --all && git push forgejo --tags
-```
-
-### Where the repository files are stored
-
-Repositories are kept as **bare Git repositories**. They contain Git objects, not checked-out source files:
-
-```
-./data/forgejo/git/repositories/<owner>/<repo>.git/
-```
-
-To read code without cloning:
-
-```bash
-REPO=data/forgejo/git/repositories/ubuntu/my-repo.git
-git --git-dir=$REPO ls-tree -r HEAD --name-only        # list files
-git --git-dir=$REPO show HEAD:README.md                # print one file
-mkdir -p /tmp/export && git --git-dir=$REPO archive HEAD | tar -x -C /tmp/export
-```
-
-> [!WARNING]
-> Don't edit files under `./data/forgejo/git/` directly. Use `git push` or the web UI so Forgejo's database stays in sync.
-
-### Synchronizing all repository branches (`make backup-branches`)
-
-If your project directories in `~/repos` contain a `backup_branches.sh` script to fetch from upstream and push all branches and tags to Forgejo (`git@git.local:ubuntu/<repo>`), you can run them all in a single coordinated command:
-
-```bash
-# Run branch sync across all repositories in ~/repos
-make backup-branches
-
-# Or run directly from ~/repos
-~/repos/backup_all_branches.sh
-```
-
-Supported flags and options (pass via `ARGS="..."` when using `make`):
-
-| Option | Description | Example |
-|---|---|---|
-| `-n`, `--dry-run` | List discovered repositories without running | `make backup-branches ARGS="--dry-run"` |
-| `-o`, `--only <name>` | Process only the specified repository | `make backup-branches ARGS="--only anpr-client"` |
-| `-d`, `--dir <path>` | Specify custom repositories root directory | `~/repos/backup_all_branches.sh --dir /custom/repos` |
-| `-q`, `--quiet` | Suppress per-repo git verbose logs and show summary table | `make backup-branches ARGS="--quiet"` |
-| `-f`, `--fail-fast` | Stop immediately if any repository backup script fails | `make backup-branches ARGS="--fail-fast"` |
-
-When completed, a formatted summary report displays individual repository status and execution timings:
-
-```text
-=================================================================
-  Backup All Branches - Summary Report
-=================================================================
-Total Repositories: 9
-Successful:         9
-Failed:             0
-Total Duration:     7s
------------------------------------------------------------------
-  Repository                   Status       Duration  
-  ---------------------------- ------------ ----------
-  anpr-camera                  SUCCESS      1s        
-  anpr-client                  SUCCESS      0s        
-  ...
-=================================================================
-```
-
----
-
-## Backup & Restore
-
-### Creating a backup
-
-```bash
-make backup
-```
-
-This writes `$BACKUP_DIR/forgejo-dump-YYYYMMDD_HHMMSS.zip`, which contains:
-
-| Path in archive | Contents |
+| Command | Description |
 |---|---|
-| `forgejo-postgres.sql` | Native `pg_dump` of the database. The restore uses this file. |
-| `forgejo-db.sql` | Forgejo's own SQL export, used only as a fallback |
-| `repos/` | All bare Git repositories |
-| `data/` | `app.ini`, avatars, attachments, indexes, JWT keys, etc. |
+| `make backup` | Alias for `make ansible-backup` (writes archive to `~/forgejo-backups/`) |
+| `make restore [FILE=…]` | Alias for `make ansible-restore` (restores newest backup or `FILE` to `git-server`) |
+| `make check-backup [FILE=…]` | Verify backup ZIP CRC integrity and check repository/database completeness |
+| `make backup-gdrive [ARGS=--new]` | Upload the newest backup to Google Drive via `rclone` |
+| `make backup-branches [ARGS=…]` | Run `backup_branches.sh` across all repositories in `~/repos` |
 
-You can make backups while the server is running.
-
-### Verifying a backup
-
-You can verify that a backup archive is valid, uncorrupted, and contains all repositories, configuration, and database tables:
-
-```bash
-make check-backup                                                   # audits newest backup in $BACKUP_DIR
-make check-backup FILE=~/forgejo-backups/forgejo-dump-20261014_192429.zip
-```
-
-The verification script checks:
-1. **Archive integrity**: runs `unzip -t` to test CRC32 checksums of every compressed file.
-2. **Core components**: confirms PostgreSQL database dump (`forgejo-postgres.sql`), `app.ini`, and data directories exist and are non-empty.
-3. **Git repositories**: unpacks repository inventory and displays all bare Git projects.
-4. **Live server parity**: if Forgejo and PostgreSQL are running, it queries the live PostgreSQL database and compares repository and user counts directly against the backup.
-
-### Restoring
-
-```bash
-make restore                                                   # newest file in $BACKUP_DIR
-make restore FILE=~/forgejo-backups/forgejo-dump-20261013_140909.zip
-```
-
-The restore:
-
-1. Starts PostgreSQL and waits until it is ready
-2. Stops Forgejo
-3. Drops and recreates the database schema, then imports the SQL dump
-4. Replaces repositories and application data, and resets file ownership to `1000:1000`
-5. Starts Forgejo and regenerates SSH `authorized_keys`
-
-> [!CAUTION]
-> A restore **overwrites** the current database and repositories. Anything created after the backup was taken is lost.
-
-### Rebuilding from scratch
-
-`make clean` never touches `$BACKUP_DIR`, so you can rebuild the whole instance from a backup:
-
-```bash
-make clean      # wipe containers and ./data
-make restore    # rebuild from the newest backup
-```
-
-This also works for moving to a new machine: copy the repo and a backup ZIP across, then run `make restore FILE=…`.
+*See [`ansible/README.md`](ansible/README.md) for detailed role and playbook documentation.*
 
 ---
 
-## Offsite Backups (Google Drive)
+## KVM / Libvirt VM & Snapshot Management
 
-[`scripts/backup-to-gdrive.sh`](scripts/backup-to-gdrive.sh) uses an existing rclone remote (`gdrive:` by default) to upload backups.
-
-```bash
-make backup-gdrive                         # upload the newest backup
-make backup-gdrive ARGS=--new              # take a fresh backup, then upload it
-
-./scripts/backup-to-gdrive.sh --all        # copy every backup (rclone skips files already uploaded)
-./scripts/backup-to-gdrive.sh <file.zip>   # upload one specific file
-./scripts/backup-to-gdrive.sh --help
-```
-
-Check that the remote works before you rely on it:
+### Customizing VM Resources or Distribution
+Supported cloud-image distributions in [`ansible/roles/vm-manager/defaults/main.yml`](ansible/roles/vm-manager/defaults/main.yml) include `noble` (Ubuntu 24.04 LTS, default), `jammy` (Ubuntu 22.04 LTS), `focal` (Ubuntu 20.04 LTS), `debian12`, and `debian11`:
 
 ```bash
-rclone lsd gdrive:
-rclone ls gdrive:Forgejo-Backups
+make ansible-kvm-server VM_NAME=git-server VM_DISTRO=noble VM_CPUS=4 VM_RAM=8192 VM_DISK=40G VM_IP=192.168.122.100
 ```
 
-### Getting a backup back from Google Drive
+### Snapshots & Cloning
+Because KVM VMs use thin-provisioned qcow2 storage in `/var/lib/libvirt/images/`, you can create and revert snapshots instantaneously:
 
 ```bash
-rclone copy gdrive:Forgejo-Backups/forgejo-dump-20261013_140909.zip ~/forgejo-backups/
-make restore FILE=~/forgejo-backups/forgejo-dump-20261013_140909.zip
-```
+# Create a snapshot before an upgrade
+make snapshot VM_NAME=git-server SNAPSHOT_NAME=before-upgrade SNAPSHOT_DESC="Clean Forgejo 16 state"
 
-### Scheduling backups
+# List all snapshots for a VM
+make snapshot_list VM_NAME=git-server
 
-Add a nightly backup and upload to your crontab with `crontab -e`:
+# Revert VM to a snapshot
+make snapshot_revert VM_NAME=git-server SNAPSHOT_NAME=before-upgrade
 
-```cron
-# Every day at 02:30: back up Forgejo and upload to Google Drive
-30 2 * * * cd /home/ubuntu/repos/git-server && ./scripts/backup-to-gdrive.sh --new >> /home/ubuntu/forgejo-backups/cron.log 2>&1
-```
+# Clone a new VM from an existing snapshot
+make snapshot_clone VM_NAME=git-server SNAPSHOT_NAME=before-upgrade NEW_VM_NAME=git-staging
 
-To delete local backups older than 14 days, add:
-
-```cron
-0 3 * * * find /home/ubuntu/forgejo-backups -name 'forgejo-dump-*.zip' -mtime +14 -delete
+# Delete a snapshot
+make snapshot_delete VM_NAME=git-server SNAPSHOT_NAME=before-upgrade
 ```
 
 ---
 
-## Upgrading Forgejo
+## Accessing & Managing VMs from Another Host
+
+The `virtualization` role configures your KVM host so you can inspect, start/stop, view consoles, and SSH into VMs from **any other workstation on your network**. Run `make kvm_remote_info` at any time to display your host's exact connection strings.
+
+### 1. Remote Virt-Manager (GUI) & `virsh` (CLI) over SSH
+Because your user (`ubuntu`) is a member of the `libvirt` and `kvm` groups and `/etc/libvirt/libvirtd.conf` is configured with `unix_sock_group = "libvirt"`, you can connect `virt-manager` or `virsh` directly from another Linux/macOS computer over SSH:
 
 ```bash
-make backup-gdrive ARGS=--new   # always take a backup first
-# Optionally set FORGEJO_VERSION in .env to a newer major version
-make pull
-make up
-make logs-server                # watch the database migrations finish
+# On your remote workstation — open the Virt-Manager GUI connected to the KVM host:
+virt-manager -c 'qemu+ssh://ubuntu@<KVM_HOST_IP>/system?socket=/var/run/libvirt/libvirt-sock'
+
+# Or run virsh CLI commands remotely from another computer:
+virsh -c 'qemu+ssh://ubuntu@<KVM_HOST_IP>/system' list --all
+virsh -c 'qemu+ssh://ubuntu@<KVM_HOST_IP>/system' snapshot-list git-server
 ```
 
-Database migrations run automatically on startup. Before a **major** version upgrade, read the [release notes](https://forgejo.org/releases/) and the [upgrade guide](https://forgejo.org/docs/latest/admin/upgrade/). Forgejo cannot be downgraded, so the only way back is to restore the backup you took.
+### 2. Web-Based VM Console & Management (Cockpit Machines)
+Cockpit and `cockpit-machines` are installed and enabled on port `9090`. From any browser on another host, open:
+- **URL:** `https://<KVM_HOST_IP>:9090`
+- Log in with your KVM host Linux credentials (`ubuntu`) and select **Virtual Machines** to start, stop, snapshot, inspect CPU/memory usage, or open an interactive in-browser VNC/serial console for `git-server` and `git-runner`.
 
----
-
-## Security Checklist
-
-The defaults are meant for local use. Before exposing the server to a network:
-
-- [ ] Set a strong `POSTGRES_PASSWORD` in `.env` **before first start**. Changing it later also requires changing it inside PostgreSQL.
-- [ ] Create admins with strong passwords, not the `make create-admin` defaults
-- [ ] Turn on 2FA for admin accounts (User Settings → Security)
-- [ ] Set `FORGEJO__service__DISABLE_REGISTRATION=true` unless you want public sign-ups
-- [ ] Put a reverse proxy with TLS in front of the server (Caddy, nginx, Traefik) and update `FORGEJO_DOMAIN` / `FORGEJO_ROOT_URL`
-- [ ] Keep backup files private. They contain password hashes and secrets (`chmod 600` is applied by default)
-- [ ] Never commit `.env` or `data/` (both are in `.gitignore`)
-
----
-
-## Troubleshooting
-
-<details>
-<summary><b>"Username or password is incorrect"</b></summary>
-
-Reset the password, which also clears the "must change password" flag:
-
-```bash
-make reset-password USER=ubuntu PASS='new-password'
-```
-
-List the existing accounts:
-
-```bash
-docker compose exec --user git server forgejo admin user list
-```
-</details>
-
-<details>
-<summary><b><code>name is reserved [name: admin]</code></b></summary>
-
-`admin` can't be used as a username. Choose another, for example `make create-admin ADMIN_USER=gitadmin …`.
-</details>
-
-<details>
-<summary><b><code>Unable to load config file for a installed Forgejo instance</code></b></summary>
-
-The instance is not marked as installed. Check that `FORGEJO__security__INSTALL_LOCK=true` is in `docker-compose.yml`, then run `make up` so the container is recreated.
-</details>
-
-<details>
-<summary><b><code>Permission denied</code> under <code>./data</code></b></summary>
-
-Files are owned by container users (`git` = 1000, `postgres` = 70, and `root` for SSH host keys). Fix ownership with a throwaway container:
-
-```bash
-docker run --rm -v "$PWD/data/forgejo:/data" alpine chown -R 1000:1000 /data
-make restart
-```
-
-`make clean` uses the same approach, so it never needs `sudo`.
-</details>
-
-<details>
-<summary><b>Container keeps restarting</b></summary>
-
-```bash
-make logs-server
-docker compose exec --user git server forgejo doctor check --all
-```
-
-To fix SSH key problems:
-
-```bash
-docker compose exec --user git server forgejo doctor check --run authorized-keys --fix
-```
-</details>
-
-<details>
-<summary><b>Port 3000 or 222 is already in use</b></summary>
-
-Change `FORGEJO_HTTP_PORT` / `FORGEJO_SSH_PORT` in `.env` and run `make up`. If you change the HTTP port, update `FORGEJO_ROOT_URL` as well.
-</details>
-
----
-
-## Testing & Deploying in a Multipass VM
-
-You can spin up an isolated Ubuntu VM using [Multipass](https://multipass.run/) to test the Git server, verify backups, or stage changes without touching your host Docker setup.
-
-### Prerequisites
-
-Multipass must be installed on your machine:
-```bash
-# Ubuntu / Debian
-sudo snap install multipass
-
-# macOS
-brew install --cask multipass
-
-# Windows
-winget install Canonical.Multipass
-```
-
-### Quick Deploy
-
-```bash
-make provision-vm
-```
-
-This single command:
-1. Launches an Ubuntu 24.04 (Noble) VM (`git-server`) with 2 CPUs, 4GB RAM, and 20GB disk.
-2. Injects your host SSH public keys (`~/.ssh/*.pub`) for passwordless access.
-3. Installs Docker and Docker Compose inside the VM.
-4. Packages and transfers this repository to `/home/ubuntu/git-server` inside the VM.
-5. Auto-configures `.env` with the VM's assigned IP address so web & Git clone URLs work immediately.
-6. Starts Forgejo and PostgreSQL and waits for the health check to pass.
-
-You can customize specs by passing variables:
-```bash
-make provision-vm VM_NAME=git-test VM_CPUS=4 VM_MEM=8G VM_DISK=30G
-```
-
-### Testing Backup Restoration in a VM
-
-To verify disaster recovery and prove that a backup restores cleanly in an isolated environment:
-
-```bash
-make vm-restore                                 # tests newest backup in ~/forgejo-backups
-make vm-restore FILE=~/forgejo-backups/forgejo-dump-20261014_192429.zip
-```
-
-### Accessing the VM
-
-Once deployed, the terminal outputs the VM's access points:
-- **Web UI:** `http://<VM-IP>:3000`
-- **Git clone:** `git clone ssh://git@<VM-IP>:222/ubuntu/my-repo.git`
-- **SSH into VM:** `make vm-shell` or `multipass shell git-server`
-
-### SSH Configuration (`~/.ssh/config`)
-
-To easily connect to the VM OS or clone repositories via SSH without repeatedly typing IP addresses, ports, or passwords, add the following to `~/.ssh/config`:
+### 3. Direct SSH & Git Access to VMs from Another Host (`ProxyJump`)
+To SSH directly into `git-server` (`192.168.122.100`) or `git-runner` (`192.168.122.101`), or push/pull Git repositories from another laptop/workstation without extra network routing, add `ProxyJump` to `~/.ssh/config` on your **remote client machine**:
 
 ```sshconfig
-# 1. Direct SSH Shell into the Multipass VM OS
-Host git-vm
-    HostName 10.134.198.130                  # Or git-server.local, or IP from `make vm-status`
+# ~/.ssh/config on your remote laptop / workstation
+Host kvm-host
+    HostName <KVM_HOST_IP>
     User ubuntu
-    IdentityFile ~/.ssh/id_ed25519            # Your host private key (public key is auto-injected by provision-vm)
+
+Host git-server
+    HostName 192.168.122.100
+    User ubuntu
+    ProxyJump kvm-host
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 
-# 2. Git over SSH to Forgejo inside the Multipass VM
-Host forgejo-vm
-    HostName 10.134.198.130                  # Or git-server.local, or IP from `make vm-status`
+Host git-runner
+    HostName 192.168.122.101
+    User ubuntu
+    ProxyJump kvm-host
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+Host git.vm
+    HostName 192.168.122.100
     Port 222
     User git
-    IdentityFile ~/.ssh/id_ed25519            # Key registered in Forgejo Web UI (Settings → SSH / GPG Keys)
+    ProxyJump kvm-host
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 ```
 
-> [!TIP]
-> Setting `StrictHostKeyChecking no` and `UserKnownHostsFile /dev/null` avoids host key mismatch warnings whenever test VMs are deleted and recreated.
-
-With this in place:
-```bash
-# SSH directly into the VM OS:
-ssh git-vm
-
-# Clone a repository from Forgejo inside the VM:
-git clone forgejo-vm:ubuntu/my-repo.git
-
-# Add the VM Forgejo as a remote to an existing project:
-git remote add vm forgejo-vm:ubuntu/my-project.git
-git push vm main
-```
-
-### Teardown
-
-When you are finished testing:
-```bash
-make vm-clean
-```
-
----
-
-## Infrastructure as Code (Ansible)
-
-This repository includes a modular Ansible suite (`common`, `docker`, `git_server`, `forgejo_runner`, and `restore_backup` roles) to provision and manage the Git server and CI/CD runners across local Multipass VMs, bare-metal servers, or remote cloud instances.
+### 4. Exposing Forgejo (`:3000` & `:222`) to the LAN (`make kvm_port_forward`)
+If you want other machines on your LAN to access Forgejo's Web UI (`http://<KVM_HOST_IP>:3000`) and Git SSH (`ssh://git@<KVM_HOST_IP>:222`) directly via the KVM host's IP address:
 
 ```bash
-make ansible-ping        # Test SSH connectivity across all inventory hosts
-make ansible-deploy      # Run end-to-end site playbook on inventory hosts (servers + runners)
-make ansible-app         # Fast update of Git server stack (skips OS packages)
-make ansible-restore     # Restore latest host backup to inventory servers
-make ansible-vm          # Launch Multipass Git Server VM and provision with Ansible
-make ansible-runner-vm   # Launch Multipass Runner VM ('git-runner') and register with Forgejo
-make ansible-runner      # Provision/update Forgejo Actions Runner on [git_runners] hosts
+# Enable iptables DNAT port forwarding from KVM Host (:3000, :222) -> git-server VM (192.168.122.100)
+make kvm_port_forward ACTION=enable
+
+# Disable port forwarding when no longer needed
+make kvm_port_forward ACTION=disable
 ```
 
-For full documentation on roles, inventory configuration, playbooks, and deploying to remote servers, see **[`ansible/README.md`](ansible/README.md)**.
+Alternatively, on another Linux workstation on the same LAN, you can add a static route to the KVM subnet:
+```bash
+sudo ip route add 192.168.122.0/24 via <KVM_HOST_IP>
+```
 
 ---
 
@@ -583,112 +201,100 @@ For full documentation on roles, inventory configuration, playbooks, and deployi
 
 Forgejo includes built-in **Forgejo Actions**, which is compatible with standard **GitHub Actions** workflows (`.github/workflows/*.yml` or `.forgejo/workflows/*.yml`).
 
-### 1. Server Configuration (`app.ini` / `docker-compose.yml`)
-
-Actions is enabled automatically by the `git_server` Ansible role and configured to resolve standard GitHub Actions (such as `actions/checkout@v4`, `docker/setup-buildx-action@v3`, `actions/upload-artifact@v4`) directly from `https://github.com`:
-
-```ini
-[actions]
-ENABLED = true
-DEFAULT_ACTIONS_URL = https://github.com
-```
-
-### 2. Provisioning the Runner VM with Ansible
-
-To launch a dedicated Multipass VM (`git-runner`), install Docker + Buildx + Node.js + `forgejo-runner`, automatically generate a registration token from `git-vm`, and register the runner:
-
+### Provisioning the KVM Runner VM
 ```bash
-make ansible-runner-vm
-```
-
-To update the configuration or labels on an already-provisioned runner VM:
-
-```bash
-make ansible-runner
+make ansible-kvm-runner
 ```
 
 What this does automatically:
-1. Launches the `git-runner` Multipass VM (Ubuntu 24.04 LTS, 2 CPUs, 4GB RAM, 60GB disk).
-2. Injects your host SSH keys and adds `Host git.runner` to `~/.ssh/config` and `git-runner` under `[git_runners]` in `ansible/inventory/hosts.ini`.
-3. Installs Docker Engine (`docker.io`), Docker Compose v2 (`docker-compose-v2`), Docker Buildx (`docker-buildx`), and Node.js/npm.
-4. Downloads `/usr/local/bin/forgejo-runner` (`v13.2.0`), fetches a runner registration token from the Forgejo server via `forgejo forgejo-cli actions generate-runner-token`, and registers the runner non-interactively.
+1. Launches the `git-runner` KVM VM (`192.168.122.101`, Ubuntu 24.04 LTS, 4 vCPUs, 4GB RAM, 60GB qcow2 disk).
+2. Injects your host SSH keys and configures `Host git.runner` in `~/.ssh/config` and `git-runner` under `[git_runners]` in [`ansible/inventory/hosts.ini`](ansible/inventory/hosts.ini).
+3. Installs Docker Engine, Docker Compose v2, Docker Buildx, Node.js/npm, and Debian packaging tools (`dpkg-dev`, `fakeroot`, etc.).
+4. Downloads `/usr/local/bin/forgejo-runner` (`v13.2.0`), deploys `ghes-preload.cjs` (so `actions/upload-artifact@v4` works seamlessly), fetches a registration token from `git-server`, and registers the runner non-interactively.
 5. Starts and enables the `forgejo-runner.service` systemd daemon.
 
-### 3. Runner Labels & Docker-Compose Workflows
-
-By default, [`ansible/inventory/group_vars/all.yml`](ansible/inventory/group_vars/all.yml) configures the runner labels on the dedicated `git-runner` VM as:
+### Runner Labels
 
 | Workflow `runs-on:` | Runner Label Mapping | Execution Environment |
 |---|---|---|
-| `ubuntu-latest` | `ubuntu-latest:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
-| `ubuntu-24.04` | `ubuntu-24.04:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
-| `ubuntu-22.04` | `ubuntu-22.04:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
-| `self-hosted` | `self-hosted:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 VM |
+| `ubuntu-latest` | `ubuntu-latest:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 KVM VM |
+| `ubuntu-24.04` | `ubuntu-24.04:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 KVM VM |
+| `ubuntu-22.04` | `ubuntu-22.04:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 KVM VM |
+| `self-hosted` | `self-hosted:host` | Runs directly on the dedicated `git-runner` Ubuntu 24.04 KVM VM |
 | `docker` | `docker:docker://node:20-bookworm` | Runs inside an isolated `node:20-bookworm` Docker container |
 
-> [!IMPORTANT]
-> **Why `ubuntu-latest:host` is used on the dedicated `git-runner` VM:**
-> Many projects (such as `fastapi-anpr-api`) run `docker compose up -d`, `docker buildx`, `sudo`, and relative bind mounts (`./output:/app/output`) inside CI steps. Running those workflows in `:host` mode on the isolated `git-runner` VM gives jobs native access to `docker`, `docker compose`, `docker buildx`, `sudo`, and real host filesystem paths so volume mounts and artifact uploads work identically to GitHub-hosted Ubuntu VMs.
+### Monitoring the Runner
+```bash
+ssh git.runner "systemctl status forgejo-runner"
+ssh git.runner "journalctl -u forgejo-runner -f"
+```
 
-### 4. Monitoring & Troubleshooting the Runner
+---
+
+## Working with Repositories
+
+When `make ansible-kvm-server` runs, it automatically configures `Host git.vm` in `~/.ssh/config` pointing to `192.168.122.100:222`:
 
 ```bash
-# Check runner systemd service status
-ssh git.runner "systemctl status forgejo-runner"
+# Clone via SSH alias
+git clone git@git.vm:ubuntu/my-repo.git
 
-# Stream live runner job execution logs
-ssh git.runner "journalctl -u forgejo-runner -f"
+# Clone via HTTP
+git clone http://192.168.122.100:3000/ubuntu/my-repo.git
 
-# Check registered runners in the Forgejo database
-ssh git.server "docker compose -f /home/ubuntu/git-server/docker-compose.yml exec -T db psql -U forgejo -d forgejo -c 'SELECT id, name, version, agent_labels, last_online FROM action_runner;'"
+# Sync all repository branches in ~/repos to Forgejo
+make backup-branches
+```
+
+---
+
+## Backup, Verification & Restore
+
+```bash
+# 1. Create a full backup on git-server via Ansible and download to ~/forgejo-backups/
+make backup
+
+# 2. Verify archive integrity (CRC32, SQL dump, app.ini, and bare Git repositories)
+make check-backup
+
+# 3. Restore the latest backup (or a specific FILE=...) onto git-server via Ansible
+make restore
+make restore FILE=~/forgejo-backups/forgejo-dump-20261027_175619.zip
+```
+
+---
+
+## Offsite Backups (Google Drive)
+
+```bash
+make backup-gdrive                 # Upload the newest backup in ~/forgejo-backups to Google Drive
+make backup-gdrive ARGS=--new      # Run 'make backup' via Ansible first, then upload to Google Drive
 ```
 
 ---
 
 ## Project Layout
 
-```
+```text
 .
 ├── .github/workflows/
-│   └── ci.yml                  # Sample GitHub Actions CI workflow
-├── docker-compose.yml          # Forgejo + PostgreSQL services
-├── Makefile                    # Main orchestrator (includes make/*.mk)
-├── make/                       # Modular makefiles
-│   ├── config.mk               # Environment, defaults, and help target
-│   ├── service.mk              # Service lifecycle (up, down, logs, shell)
-│   ├── admin.mk                # User and password management
-│   ├── backup.mk               # Backup, verification, restore, and cleanup
-│   ├── multipass.mk            # Multipass VM testing and provisioning
-│   └── ansible.mk              # Ansible IaC commands
-├── ansible/                    # Infrastructure as Code
-│   ├── ansible.cfg             # Ansible configuration
-│   ├── inventory/              # Hosts inventory ([git_servers], [git_runners]) and group_vars
-│   ├── playbooks/              # site, deploy-git-server, deploy-runner, provision-*-multipass, restore
-│   └── roles/                  # common, docker, git_server, forgejo_runner, restore_backup
-├── .env.example                # Configuration template (committed)
-├── .env                        # Local configuration (gitignored)
-├── scripts/
-│   ├── backup-all-branches.sh  # Syncs all repository branches to Forgejo
-│   ├── backup-to-gdrive.sh     # rclone upload to Google Drive
-│   ├── verify-backup.sh        # Archive integrity and completeness verification
-│   └── provision-vm.sh         # Multipass VM launch and provisioning script
-├── multipass/
-│   └── cloud-init.yaml         # Cloud-init config for Multipass VM
-└── data/                       # Persistent state (gitignored)
-    ├── forgejo/
-    │   ├── git/repositories/   # Bare Git repositories
-    │   ├── gitea/              # app.ini, avatars, attachments, indexes, logs
-    │   └── ssh/                # SSH host keys
-    └── postgres/               # PostgreSQL data files
-
-~/forgejo-backups/              # Backup archives (outside the repo)
+│   └── ci.yml                      # Sample GitHub Actions CI workflow
+├── Makefile                        # Main orchestrator (includes make/*.mk)
+├── make/                           # Modular makefiles (matching ansible-kvm structure)
+│   ├── config.mk                   # Default variables and help target
+│   ├── setup.mk                    # Host KVM/libvirt & remote management setup
+│   ├── vm.mk                       # KVM VM creation, status, workspace, and cleanup
+│   ├── snapshot.mk                 # KVM VM snapshot management (create, list, revert, clone)
+│   ├── ansible.mk                  # Ansible IaC deployment targets
+│   └── backup.mk                   # Ansible-driven backup, verification, restore, and sync
+├── ansible/                        # Infrastructure as Code
+│   ├── ansible.cfg                 # Ansible configuration
+│   ├── inventory/                  # Hosts inventory ([git_servers], [git_runners]) and group_vars
+│   ├── playbooks/                  # site, configure-kvm, provision-kvm, provision-runner-kvm, backup, restore
+│   └── roles/                      # virtualization, vm-manager, common, docker, git_server, forgejo_runner, restore_backup
+└── scripts/
+    ├── backup-all-branches.sh      # Syncs all repository branches in ~/repos to Forgejo
+    ├── backup-to-gdrive.sh         # rclone upload to Google Drive
+    ├── verify-backup.sh            # Archive integrity and completeness verification
+    └── kvm-remote-access.sh        # Remote KVM access & host-to-VM port forwarding helper
 ```
-
----
-
-### Using SQLite instead of PostgreSQL
-
-For a single-container setup, remove the `db` service, the `depends_on` block and every `FORGEJO__database__*` variable from `docker-compose.yml`. Forgejo then stores its data in `./data/forgejo/gitea/gitea.db`.
-
-> [!WARNING]
-> `make backup` and `make restore` assume PostgreSQL and would need changes to work with SQLite.

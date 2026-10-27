@@ -1,0 +1,47 @@
+#cloud-config
+hostname: {{ vm_hostname }}
+fqdn: {{ vm_hostname }}.local
+manage_etc_hosts: true
+
+users:
+  - name: {{ vm_user }}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin, sudo
+    home: /home/{{ vm_user }}
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: {{ vm_password }}
+    ssh_authorized_keys:
+{% for key in vm_authorized_keys_list %}
+      - {{ key }}
+{% endfor %}
+
+ssh_pwauth: true
+disable_root: false
+
+growpart:
+  mode: auto
+  devices: ['/']
+  ignore_growroot_disabled: false
+
+resize_rootfs: true
+
+package_update: true
+package_upgrade: false
+packages:
+  - qemu-guest-agent
+  - net-tools
+  - vim
+  - curl
+  - wget
+  - htop
+  - git
+  - jq
+  - unzip
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+  - systemctl restart ssh || systemctl restart sshd
+  - echo "VM Ready - Provisioned by Ansible KVM" > /etc/motd
+
+final_message: "The system is finally up, after $UPTIME seconds"

@@ -1,17 +1,18 @@
 # =============================================================================
-# Forgejo Git Server - Main Makefile
+# Forgejo Git Server & KVM Infrastructure (Ansible IaC) - Main Makefile
 # =============================================================================
 # Modular targets are organized in the make/ directory:
-#   make/config.mk     - Environment setup, default variables, help target
-#   make/service.mk    - Service lifecycle (up, down, restart, logs, etc.)
-#   make/admin.mk      - User and password administration
-#   make/backup.mk     - Backups, verification, restore, and cleanup
-#   make/multipass.mk  - Multipass VM testing and provisioning
+#   make/config.mk     - Default variables and help target
+#   make/setup.mk      - Host KVM/libvirt & remote management setup
+#   make/vm.mk         - KVM VM creation, status, workspace, and cleanup
+#   make/snapshot.mk   - KVM VM snapshot management (create, list, revert, clone)
+#   make/ansible.mk    - Ansible Git Server & Runner provisioning targets
+#   make/backup.mk     - Ansible-driven backups, verification, restore, and sync
 # =============================================================================
 
 include make/config.mk
-include make/service.mk
-include make/admin.mk
-include make/backup.mk
-include make/multipass.mk
+include make/setup.mk
+include make/vm.mk
+include make/snapshot.mk
 include make/ansible.mk
+include make/backup.mk

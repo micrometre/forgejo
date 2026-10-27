@@ -1,0 +1,20 @@
+---
+# Handlers for virtualization role
+
+- name: restart libvirtd
+  ansible.builtin.systemd:
+    name: "{{ libvirt_service_name }}"
+    state: restarted
+  become: true
+
+- name: reload libvirtd
+  ansible.builtin.systemd:
+    name: "{{ libvirt_service_name }}"
+    state: reloaded
+  become: true
+
+- name: restart cockpit
+  ansible.builtin.systemd:
+    name: cockpit.socket
+    state: restarted
+  become: true

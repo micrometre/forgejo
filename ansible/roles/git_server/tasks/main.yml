@@ -12,7 +12,6 @@
     - "{{ git_server_dir }}/data/forgejo"
     - "{{ git_server_dir }}/data/postgres"
     - "{{ git_server_dir }}/scripts"
-    - "{{ git_server_dir }}/make"
     - "{{ backup_dir }}"
 
 - name: Render .env configuration
@@ -31,21 +30,10 @@
     group: "{{ deploy_user }}"
     mode: "0644"
 
-- name: Copy project Makefile and modular make/ directory
+- name: Copy restore helper script to target server
   ansible.builtin.copy:
-    src: "{{ project_root }}/{{ item }}"
-    dest: "{{ git_server_dir }}/{{ item }}"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
-    mode: preserve
-  loop:
-    - Makefile
-    - make
-
-- name: Copy utility scripts
-  ansible.builtin.copy:
-    src: "{{ project_root }}/scripts/"
-    dest: "{{ git_server_dir }}/scripts/"
+    src: restore-forgejo.sh
+    dest: "{{ git_server_dir }}/scripts/restore-forgejo.sh"
     owner: "{{ deploy_user }}"
     group: "{{ deploy_user }}"
     mode: "0755"
@@ -113,8 +101,26 @@
 
     - name: Execute restore inside target host
       ansible.builtin.command:
-        cmd: make restore FILE={{ backup_dir }}/restore-target.zip CONFIRM=y
+        cmd: "{{ git_server_dir }}/scripts/restore-forgejo.sh {{ backup_dir }}/restore-target.zip"
         chdir: "{{ git_server_dir }}"
       become_user: "{{ deploy_user }}"
       register: restore_result
+      changed_when: true
+
+    - name: Update restored app.ini domain and root URL to match current host IP
+      ansible.builtin.replace:
+        path: "{{ git_server_dir }}/data/forgejo/gitea/conf/app.ini"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      loop:
+        - { regexp: '^(DOMAIN\s*=\s*).*$', replace: '\g<1>{{ forgejo_domain }}' }
+        - { regexp: '^(SSH_DOMAIN\s*=\s*).*$', replace: '\g<1>{{ forgejo_domain }}' }
+        - { regexp: '^(ROOT_URL\s*=\s*).*$', replace: '\g<1>{{ forgejo_root_url }}' }
+      failed_when: false
+
+    - name: Restart Forgejo server after updating restored app.ini
+      ansible.builtin.command:
+        cmd: docker compose restart server
+        chdir: "{{ git_server_dir }}"
+      become_user: "{{ deploy_user }}"
       changed_when: true

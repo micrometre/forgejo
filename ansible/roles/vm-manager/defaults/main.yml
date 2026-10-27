@@ -1,0 +1,97 @@
+---
+# Default variables for vm-manager role (based on ansible-kvm)
+
+# VM action to perform:
+#   create | status | overview | snapshot_create | snapshot_list | snapshot_revert | snapshot_delete | snapshot_clone
+vm_action: create
+
+# VM basic configuration
+vm_name: git-server
+vm_ram: 4096
+vm_vcpus: 2
+vm_disk_size: 20G
+
+# Distribution selection (focal, jammy, noble, debian11, debian12)
+vm_distro: noble
+
+# Cloud image URLs for different distributions
+cloud_images:
+  focal:
+    name: Ubuntu 20.04 LTS (Focal)
+    url: https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.img
+    image_name: focal-server-cloudimg-amd64.img
+    os_variant: ubuntu20.04
+    default_user: ubuntu
+  jammy:
+    name: Ubuntu 22.04 LTS (Jammy)
+    url: https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+    image_name: jammy-server-cloudimg-amd64.img
+    os_variant: ubuntu22.04
+    default_user: ubuntu
+  noble:
+    name: Ubuntu 24.04 LTS (Noble)
+    url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+    image_name: noble-server-cloudimg-amd64.img
+    os_variant: ubuntu24.04
+    default_user: ubuntu
+  debian11:
+    name: Debian 11 (Bullseye)
+    url: https://cloud.debian.org/images/cloud/bullseye/latest/debian-11-generic-amd64.qcow2
+    image_name: debian-11-generic-amd64.qcow2
+    os_variant: debian11
+    default_user: debian
+  debian12:
+    name: Debian 12 (Bookworm)
+    url: https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2
+    image_name: debian-12-generic-amd64.qcow2
+    os_variant: debian12
+    default_user: debian
+
+# Computed values based on selected distribution
+vm_image_url: "{{ cloud_images[vm_distro].url }}"
+vm_base_image: "{{ cloud_images[vm_distro].image_name }}"
+vm_os_variant: "{{ cloud_images[vm_distro].os_variant }}"
+
+# Paths
+vm_images_dir: /var/lib/libvirt/images
+shared_images_dir: "/home/{{ deploy_user | default('ubuntu') }}/vm-images"
+work_directory: "/home/{{ deploy_user | default('ubuntu') }}/vm-workspace"
+use_shared_images: true
+use_work_directory: true
+
+# VM disk paths
+vm_disk_path: "{{ vm_images_dir }}/{{ vm_name }}.img"
+vm_seed_iso_path: "{{ vm_images_dir }}/{{ vm_name }}-seed.iso"
+
+# Network configuration (virbr0 NAT network 192.168.122.0/24)
+vm_network: bridge=virbr0,model=virtio
+vm_static_ip: 192.168.122.100
+vm_gateway: 192.168.122.1
+vm_netmask: 255.255.255.0
+vm_dns:
+  - 8.8.8.8
+  - 1.1.1.1
+
+# Cloud-init configuration
+vm_user: "{{ cloud_images[vm_distro].default_user | default('ubuntu') }}"
+vm_password: "$6$rounds=4096$saltsalt$Lst2c21E9B3tB2FIKOFH0fG24cR4p5O8z6a5wJq1F7x.x6T.h8p8h8p8h8p8h8p8h8p8h8p8h8p8h8p8h8p8h/"
+vm_hostname: "{{ vm_name }}"
+vm_ssh_key_path: "/home/{{ deploy_user | default('ubuntu') }}/.ssh/id_rsa_vm"
+
+# VM hardware and remote graphics configuration
+vm_graphics: vnc,listen=0.0.0.0
+vm_console: pty,target_type=serial
+vm_autostart: true
+
+# Wait for VM to be ready
+vm_wait_for_ssh: true
+vm_ssh_timeout: 300
+
+# Cleanup existing VM if present
+vm_cleanup: false
+
+# Optional inventory & SSH config integration
+inventory_group: ""
+ssh_alias: ""
+ssh_alias_port: 22
+ssh_alias_user: "{{ vm_user }}"

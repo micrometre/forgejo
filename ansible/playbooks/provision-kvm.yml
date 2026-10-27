@@ -1,0 +1,92 @@
+---
+# =============================================================================
+# Turnkey Playbook: Launch KVM/Libvirt VM & Provision Git Server with Ansible
+# =============================================================================
+# 1. Ensures KVM/libvirt virtualization + remote management are configured on host
+# 2. Launches Ubuntu 24.04 (noble) KVM VM via cloud-init ('git-server')
+# 3. Persists VM IP into ansible/inventory/hosts.ini and ~/.ssh/config
+# 4. Executes roles (common, docker, git_server) on the newly created KVM VM
+
+- name: Launch and Prepare KVM VM for Git Server
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+  vars:
+    vm_name: "git-server"
+    vm_distro: "noble"
+    vm_vcpus: 2
+    vm_ram: 4096
+    vm_disk_size: "20G"
+    vm_static_ip: "192.168.122.100"
+    inventory_group: "git_servers"
+    ssh_alias: "git-server"
+
+  roles:
+    - role: virtualization
+      tags: [virtualization, setup]
+
+    - role: vm-manager
+      tags: [vm, create-vm]
+
+  post_tasks:
+    - name: Add Host git.vm and git.server SSH aliases to ~/.ssh/config
+      ansible.builtin.blockinfile:
+        path: "/home/{{ deploy_user | default('ubuntu') }}/.ssh/config"
+        create: true
+        mode: "0600"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK: git.vm"
+        block: |
+          Host git.vm
+              HostName {{ vm_static_ip }}
+              Port {{ forgejo_ssh_port | default(222) }}
+              User git
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+
+          Host git.server
+              HostName {{ vm_static_ip }}
+              Port 22
+              User {{ vm_user | default('ubuntu') }}
+              IdentityFile {{ vm_ssh_key_path | default('/home/' ~ (deploy_user | default('ubuntu')) ~ '/.ssh/id_rsa_vm') }}
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+      become: false
+
+    - name: Add KVM VM to in-memory inventory for provisioning
+      ansible.builtin.add_host:
+        name: "{{ vm_name }}"
+        groups: git_servers
+        ansible_host: "{{ vm_static_ip }}"
+        ansible_user: "{{ vm_user | default('ubuntu') }}"
+        ansible_ssh_private_key_file: "{{ vm_ssh_key_path | default('/home/' ~ (deploy_user | default('ubuntu')) ~ '/.ssh/id_rsa_vm') }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        forgejo_domain: "{{ vm_static_ip }}"
+
+- name: Provision Forgejo Git Server on KVM VM
+  hosts: git_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: docker
+      tags: [docker]
+
+    - role: git_server
+      tags: [git_server, app]
+
+  post_tasks:
+    - name: Display Git Server KVM Deployment Summary
+      ansible.builtin.debug:
+        msg:
+          - "================================================================="
+          - "  Forgejo Git Server KVM VM Ready!"
+          - "  VM Name:         {{ inventory_hostname }} ({{ ansible_host }})"
+          - "  Web UI:          http://{{ ansible_host }}:{{ forgejo_http_port | default(3000) }}"
+          - "  Git over SSH:    ssh://git@{{ ansible_host }}:{{ forgejo_ssh_port | default(222) }}/<user>/<repo>.git"
+          - "  SSH to VM:       ssh {{ inventory_hostname }}"
+          - "================================================================="
+      tags: [always]

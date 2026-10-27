@@ -16,9 +16,9 @@
   vars:
     runner_vm_name: "git-runner"
     runner_vm_image: "noble"
-    runner_vm_cpus: 2
+    runner_vm_cpus: 4
     runner_vm_memory: "4G"
-    runner_vm_disk: "20G"
+    runner_vm_disk: "60G"
 
   tasks:
     - name: Verify multipass CLI is available

@@ -608,7 +608,7 @@ make ansible-runner
 ```
 
 What this does automatically:
-1. Launches the `git-runner` Multipass VM (Ubuntu 24.04 LTS, 2 CPUs, 4GB RAM, 20GB disk).
+1. Launches the `git-runner` Multipass VM (Ubuntu 24.04 LTS, 2 CPUs, 4GB RAM, 60GB disk).
 2. Injects your host SSH keys and adds `Host git.runner` to `~/.ssh/config` and `git-runner` under `[git_runners]` in `ansible/inventory/hosts.ini`.
 3. Installs Docker Engine (`docker.io`), Docker Compose v2 (`docker-compose-v2`), Docker Buildx (`docker-buildx`), and Node.js/npm.
 4. Downloads `/usr/local/bin/forgejo-runner` (`v13.2.0`), fetches a runner registration token from the Forgejo server via `forgejo forgejo-cli actions generate-runner-token`, and registers the runner non-interactively.

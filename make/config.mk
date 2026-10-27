@@ -19,6 +19,7 @@ RUNNER_VM_NAME ?= git-runner
 VM_CPUS ?= 2
 VM_MEM ?= 4G
 VM_DISK ?= 20G
+RUNNER_VM_DISK ?= 60G
 
 .PHONY: help
 

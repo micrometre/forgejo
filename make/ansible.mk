@@ -31,4 +31,4 @@ ansible-runner: ## Provision and register Forgejo Actions Runner on inventory [g
 
 ansible-runner-vm: ## Launch Multipass Runner VM ('git-runner') and register it with Forgejo via Ansible
 	@ANSIBLE_CONFIG=$(ANSIBLE_CFG) ansible-playbook -i $(INVENTORY) $(ANSIBLE_DIR)/playbooks/provision-runner-multipass.yml \
-		-e "runner_vm_name=$(RUNNER_VM_NAME) runner_vm_cpus=$(VM_CPUS) runner_vm_memory=$(VM_MEM) runner_vm_disk=$(VM_DISK)" $(if $(EXTRA_VARS),-e "$(EXTRA_VARS)",)
+		-e "runner_vm_name=$(RUNNER_VM_NAME) runner_vm_cpus=$(VM_CPUS) runner_vm_memory=$(VM_MEM) runner_vm_disk=$(RUNNER_VM_DISK)" $(if $(EXTRA_VARS),-e "$(EXTRA_VARS)",)

@@ -16,7 +16,7 @@
     runner_vm_name: "git-runner"
     runner_vm_distro: "noble"
     runner_vm_vcpus: 4
-    runner_vm_ram: 4096
+    runner_vm_ram: 8192
     runner_vm_disk_size: "60G"
     runner_vm_ip: "192.168.122.101"
 

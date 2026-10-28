@@ -8,6 +8,6 @@ all:
           ansible_ssh_private_key_file: /home/ubuntu/.ssh/id_rsa_vm
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
           vm_distro: noble
-          vm_ram: 4096
+          vm_ram: 8192
           vm_vcpus: 4
           vm_disk_size: 60G

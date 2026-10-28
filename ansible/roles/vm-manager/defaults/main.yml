@@ -7,7 +7,7 @@ vm_action: create
 
 # VM basic configuration
 vm_name: git-server
-vm_ram: 4096
+vm_ram: 8192
 vm_vcpus: 2
 vm_disk_size: 20G
 
